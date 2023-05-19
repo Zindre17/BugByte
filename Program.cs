@@ -1,6 +1,17 @@
 ﻿using System.Diagnostics;
 
-var fileName = "file.txt";
+if (args.Length == 0)
+{
+    Console.WriteLine("Please provide a file name to lex");
+    return;
+}
+if (args.Length > 1)
+{
+    Console.WriteLine("Please provide only one file name");
+    return;
+}
+
+var fileName = args[0];
 
 var stopWatch = new Stopwatch();
 stopWatch.Start();
