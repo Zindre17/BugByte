@@ -3,8 +3,9 @@ A programming language
 
 ## Progress and Roadmap
 
+- [x] Lexer
+- [ ] Program to compile as argument
 - [ ] Parser
-- [ ] Lexer
 - [ ] Compiler
 - [ ] Error reporting
 - [ ] Hello, world!
