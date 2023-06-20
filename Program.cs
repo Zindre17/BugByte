@@ -123,14 +123,14 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 assembly.Add($"  add rax, rbx");
                 assembly.Add($"  push rax");
             }
-            if (operation.Token.Value is "-")
+            else if (operation.Token.Value is "-")
             {
                 assembly.Add($"  pop rax");
                 assembly.Add($"  mov rbx, {operation.Value!.Number}");
                 assembly.Add($"  sub rax, rbx");
                 assembly.Add($"  push rax");
             }
-            if (operation.Token.Value is "*")
+            else if (operation.Token.Value is "*")
             {
                 assembly.Add($"  pop rax");
                 assembly.Add($"  mov rbx, {operation.Value!.Number}");
