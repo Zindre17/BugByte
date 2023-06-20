@@ -5,8 +5,8 @@ A programming language
 
 - [x] Lexer
 - [x] Program to compile as argument
-- [ ] Parser
-- [ ] Compiler
-- [ ] Error reporting
+- [x] Parser
+- [x] Compiler
+- [x] Error reporting
 - [ ] Hello, world!
 - [ ] Self-hosted compiler
