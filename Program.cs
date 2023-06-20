@@ -1,4 +1,6 @@
-﻿if (args.Length == 0)
+﻿using System.Diagnostics;
+
+if (args.Length == 0)
 {
     Console.WriteLine("Please provide a file name to lex");
     return;
@@ -28,6 +30,36 @@ catch (Exception e)
 }
 
 Console.WriteLine("Compiled successfully.");
+
+var fileNameWithoutExtension = fileName.Split(".")[0];
+ProcessStartInfo startInfo = new()
+{
+    FileName = "fasm",
+    Arguments = $"{fileNameWithoutExtension}.asm {fileNameWithoutExtension}",
+};
+var process = Process.Start(startInfo);
+process?.WaitForExit();
+
+Console.WriteLine("Assembled successfully.");
+
+startInfo = new()
+{
+    FileName = "chmod",
+    Arguments = $"+x {fileNameWithoutExtension}",
+};
+process = Process.Start(startInfo);
+process?.WaitForExit();
+
+Console.WriteLine("Made executable successfully.");
+
+startInfo = new()
+{
+    FileName = fileNameWithoutExtension,
+};
+process = Process.Start(startInfo);
+process?.WaitForExit();
+
+Console.WriteLine("Executed successfully.");
 
 static void GenerateAsembly(ParsedProgram program, string filename)
 {
