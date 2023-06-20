@@ -107,6 +107,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
         "start:"
     };
 
+    var stringLiterals = new List<string>();
     foreach (var operation in program.Operations)
     {
         if (operation.Type is TokenType.Number)
@@ -162,6 +163,18 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 throw new Exception($"Unknown keyword `{operation.Token.Value}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
             }
         }
+        else if (operation.Type is TokenType.String)
+        {
+            if (operation.Value!.Text is null)
+            {
+                throw new Exception($"Operation was of type string but has no value. Probably a bug in the parser.");
+            }
+            assembly.Add($"  mov rax, {operation.Value.Text.Length}");
+            assembly.Add($"  push rax");
+            assembly.Add($"  push string_{stringLiterals.Count}");
+
+            stringLiterals.Add(operation.Value.Text);
+        }
         else
         {
             throw new Exception($"Unknown operation `{operation.Type}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
@@ -172,6 +185,14 @@ static void GenerateAsembly(ParsedProgram program, string filename)
     assembly.Add("  mov rax, 60");
     assembly.Add("  mov rdi, 0");
     assembly.Add("  syscall");
+
+    // NOTE: removed the 'writeable' flag since these are constant string literals
+    assembly.Add("segment readable");
+    for (var i = 0; i < stringLiterals.Count; i++)
+    {
+        var stringLiteral = stringLiterals[i];
+        assembly.Add($"string_{i}: db \"{stringLiteral}\"");
+    }
 
     File.WriteAllLines($"{filename.Split(".")[0]}.asm", assembly);
 }
@@ -231,6 +252,10 @@ static ParsedProgram ParseProgram(List<Token> tokens)
         {
             program.Operations.Add(new Operation(TokenType.Keyword, token));
         }
+        else if (token.Value.StartsWith('"') && token.Value.EndsWith('"'))
+        {
+            program.Operations.Add(new Operation(TokenType.String, token, new Value(Text: token.Value[1..^1])));
+        }
         else
         {
             throw new Exception($"Unknown token `{token.Value}` @ {token.Filename}:{token.Line}:{token.Column}");
@@ -275,9 +300,10 @@ enum TokenType
     Number,
     Operator,
     Keyword,
+    String,
 }
 
-record Value(int? Number = null, string? Word = null);
+record Value(int? Number = null, string? Text = null);
 
 record Operation(TokenType Type, Token Token, Value? Value = null);
 
