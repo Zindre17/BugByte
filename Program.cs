@@ -150,15 +150,23 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 throw new Exception($"Unknown operator `{operation.Token.Value}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
             }
         }
+        else if (operation.Type is TokenType.Keyword)
+        {
+            if (operation.Token.Value is "print")
+            {
+                assembly.Add("  pop rdi");
+                assembly.Add("  call print");
+            }
+            else
+            {
+                throw new Exception($"Unknown keyword `{operation.Token.Value}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
+            }
+        }
         else
         {
             throw new Exception($"Unknown operation `{operation.Type}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
         }
     }
-
-    // TODO: only temporary to print the item at the top of the stack
-    assembly.Add("  pop rdi");
-    assembly.Add("  call print");
 
     // EXIT syscall
     assembly.Add("  mov rax, 60");
@@ -219,6 +227,10 @@ static ParsedProgram ParseProgram(List<Token> tokens)
 
             program.Operations.Add(new Operation(TokenType.Operator, token, new Value(Number: operand)));
         }
+        else if (token.Value is "print")
+        {
+            program.Operations.Add(new Operation(TokenType.Keyword, token));
+        }
         else
         {
             throw new Exception($"Unknown token `{token.Value}` @ {token.Filename}:{token.Line}:{token.Column}");
@@ -262,6 +274,7 @@ enum TokenType
 {
     Number,
     Operator,
+    Keyword,
 }
 
 record Value(int? Number = null, string? Word = null);
