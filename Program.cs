@@ -130,6 +130,13 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 assembly.Add($"  sub rax, rbx");
                 assembly.Add($"  push rax");
             }
+            if (operation.Token.Value is "*")
+            {
+                assembly.Add($"  pop rax");
+                assembly.Add($"  mov rbx, {operation.Value!.Number}");
+                assembly.Add($"  mul rbx");
+                assembly.Add($"  push rax");
+            }
             else
             {
                 throw new Exception($"Unknown operator `{operation.Token.Value}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
@@ -180,6 +187,16 @@ static ParsedProgram ParseProgram(List<Token> tokens)
             if (!int.TryParse(nextToken.Value, out var operand))
             {
                 throw new Exception($"Expected number after -, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+            }
+
+            program.Operations.Add(new Operation(TokenType.Operator, token, new Value(Number: operand)));
+        }
+        else if (token.Value is "*")
+        {
+            var nextToken = tokenQueue.Dequeue();
+            if (!int.TryParse(nextToken.Value, out var operand))
+            {
+                throw new Exception($"Expected number after *, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
             }
 
             program.Operations.Add(new Operation(TokenType.Operator, token, new Value(Number: operand)));
