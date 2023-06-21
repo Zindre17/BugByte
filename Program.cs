@@ -198,7 +198,11 @@ static void GenerateAsembly(ParsedProgram program, string filename)
     assembly.Add("segment readable");
     for (var i = 0; i < stringLiterals.Count; i++)
     {
-        var stringLiteral = stringLiterals[i];
+        // TODO: Do this cleaner. This is potentially wasteful (emtpy "" at the end).
+        var stringLiteral = stringLiterals[i]
+            .Replace("\\r", "\", 13, \"")
+            .Replace("\\n", "\", 10, \"")
+            .Replace("\\t", "\", 9, \"");
         assembly.Add($"string_{i}: db \"{stringLiteral}\"");
     }
 
