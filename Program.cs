@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics;
 
-if (args.Length == 0)
+if (args.Length is 0)
 {
     Console.WriteLine("Please provide a file name to lex");
     return;
@@ -32,34 +32,84 @@ catch (Exception e)
 Console.WriteLine("Compiled successfully.");
 
 var fileNameWithoutExtension = fileName.Split(".")[0];
-ProcessStartInfo startInfo = new()
+
+if (!RunExternalCommand("fasm", $"{fileNameWithoutExtension}.asm {fileNameWithoutExtension}"))
 {
-    FileName = "fasm",
-    Arguments = $"{fileNameWithoutExtension}.asm {fileNameWithoutExtension}",
-};
-var process = Process.Start(startInfo);
-process?.WaitForExit();
+    Console.ForegroundColor = ConsoleColor.Red;
+    Console.Error.WriteLine("Failed to assemble.");
+    Console.ResetColor();
+    Environment.Exit(1);
+}
 
-Console.WriteLine("Assembled successfully.");
-
-startInfo = new()
+if (!RunExternalCommand("chmod", $"+x {fileNameWithoutExtension}"))
 {
-    FileName = "chmod",
-    Arguments = $"+x {fileNameWithoutExtension}",
-};
-process = Process.Start(startInfo);
-process?.WaitForExit();
+    Console.ForegroundColor = ConsoleColor.Red;
+    Console.Error.WriteLine("Failed to make executable.");
+    Console.ResetColor();
+    Environment.Exit(1);
+}
 
-Console.WriteLine("Made executable successfully.");
+RunExternalCommand($"./{fileNameWithoutExtension}", "", false);
 
-startInfo = new()
+static bool RunExternalCommand(string command, string arguments, bool printInfo = true)
 {
-    FileName = fileNameWithoutExtension,
-};
-process = Process.Start(startInfo);
-process?.WaitForExit();
-
-Console.WriteLine("Executed successfully.");
+    var startInfo = new ProcessStartInfo()
+    {
+        FileName = command,
+        Arguments = arguments,
+    };
+    try
+    {
+        var process = Process.Start(startInfo);
+        if (process is null)
+        {
+            if (printInfo)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Error.WriteLine("Failed to start external process.");
+                Console.ResetColor();
+            }
+            return false;
+        }
+        if (printInfo)
+        {
+            Console.WriteLine($"Running command: {command} {arguments}");
+        }
+        process.WaitForExit();
+        if (process.ExitCode is not 0)
+        {
+            if (printInfo)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Error.WriteLine($"Command failed. Error({process.ExitCode}): {process.StandardError.ReadToEnd()}");
+                Console.ResetColor();
+            }
+            return false;
+        }
+        return true;
+    }
+    catch (System.ComponentModel.Win32Exception e)
+    {
+        if (e.HResult is -2147467259)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Error.WriteLine($"Command not found: {command}. Make sure you have all the dependencies installed.");
+            Console.ResetColor();
+            return false;
+        }
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.Error.WriteLine($"{e.GetType()}({e.HResult}): {e.Message}");
+        Console.ResetColor();
+        return false;
+    }
+    catch (Exception e)
+    {
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.Error.WriteLine($"{e.GetType()}({e.HResult}): {e.Message}");
+        Console.ResetColor();
+        return false;
+    }
+}
 
 static void GenerateAsembly(ParsedProgram program, string filename)
 {
