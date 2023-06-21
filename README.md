@@ -9,5 +9,7 @@ A programming language
 - [x] Compiler
 - [x] Error reporting
 - [x] Hello, world!
+- [ ] Conditional statements
+- [ ] Loops
 - [ ] Type system
 - [ ] Self-hosted compiler
