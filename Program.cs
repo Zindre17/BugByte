@@ -271,21 +271,35 @@ static List<Token> LexProgram(string filename)
     var lineNr = 1;
     foreach (var line in lines)
     {
-        var remainigLine = line.TrimStart();
-        var currentColumn = line.Length - remainigLine.Length + 1; // index starts at 1
-        while (remainigLine.Length > 0)
+        var remainingLine = line.TrimStart();
+        var currentColumn = line.Length - remainingLine.Length + 1; // index starts at 1
+        while (remainingLine.Length > 0)
         {
-            var split = remainigLine.Split(' ', 2);
-            words.Add(new Token(filename, split[0], lineNr, currentColumn));
-            if (split.Length > 1)
+            if (remainingLine.StartsWith('"'))
             {
-                currentColumn += split[0].Length + 1; // +1 for the space
-                remainigLine = split[1].TrimStart();
-                currentColumn += split[1].Length - remainigLine.Length;
+                var endQuoteIndex = remainingLine.IndexOf('"', 1);
+                if (endQuoteIndex == -1)
+                {
+                    throw new Exception($"Missing end quote for string literal `{remainingLine}` @ {filename}:{lineNr}:{currentColumn}");
+                }
+                var stringLiteral = remainingLine[..(endQuoteIndex + 1)];
+                words.Add(new Token(filename, stringLiteral, lineNr, currentColumn));
+                remainingLine = remainingLine[(endQuoteIndex + 2)..].TrimStart();
             }
             else
             {
-                remainigLine = "";
+                var split = remainingLine.Split(' ', 2);
+                words.Add(new Token(filename, split[0], lineNr, currentColumn));
+                if (split.Length > 1)
+                {
+                    currentColumn += split[0].Length + 1; // +1 for the space
+                    remainingLine = split[1].TrimStart();
+                    currentColumn += split[1].Length - remainingLine.Length;
+                }
+                else
+                {
+                    remainingLine = "";
+                }
             }
         }
         lineNr++;
