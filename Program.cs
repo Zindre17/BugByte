@@ -158,6 +158,14 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 assembly.Add("  pop rdi");
                 assembly.Add("  call print");
             }
+            else if (operation.Token.Value is "prints")
+            {
+                assembly.Add("  pop rsi");
+                assembly.Add("  pop rdx");
+                assembly.Add("  mov rdi, 1");
+                assembly.Add("  mov rax, 1");
+                assembly.Add("  syscall");
+            }
             else
             {
                 throw new Exception($"Unknown keyword `{operation.Token.Value}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
@@ -249,6 +257,10 @@ static ParsedProgram ParseProgram(List<Token> tokens)
             program.Operations.Add(new Operation(TokenType.Operator, token, new Value(Number: operand)));
         }
         else if (token.Value is "print")
+        {
+            program.Operations.Add(new Operation(TokenType.Keyword, token));
+        }
+        else if (token.Value is "prints")
         {
             program.Operations.Add(new Operation(TokenType.Keyword, token));
         }
