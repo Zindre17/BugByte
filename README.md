@@ -8,5 +8,6 @@ A programming language
 - [x] Parser
 - [x] Compiler
 - [x] Error reporting
-- [ ] Hello, world!
+- [x] Hello, world!
+- [ ] Type system
 - [ ] Self-hosted compiler
