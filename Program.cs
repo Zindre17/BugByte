@@ -112,36 +112,45 @@ static void GenerateAsembly(ParsedProgram program, string filename)
     {
         if (operation.Type is TokenType.Number)
         {
-            assembly.Add($"  mov rax, {operation.Value!.Number}");
+            var number = operation.Data?.Number
+                ?? throw new Exception($"Operation was of type number but has no value. Probably a bug in the parser. @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
+
+            assembly.Add($"  mov rax, {number}");
             assembly.Add($"  push rax");
         }
         else if (operation.Type is TokenType.Operator)
         {
+            var op = operation.Data?.Operator
+                ?? throw new Exception($"Operation was of type operator but has no value. Probably a bug in the parser. @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
+
+            var number = operation.Data.Number
+                ?? throw new Exception($"Operation was of type operator but has no value. Probably a bug in the parser. @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
+
             if (operation.Token.Value is "+")
             {
                 assembly.Add($"  pop rax");
-                assembly.Add($"  mov rbx, {operation.Value!.Number}");
+                assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  add rax, rbx");
                 assembly.Add($"  push rax");
             }
             else if (operation.Token.Value is "-")
             {
                 assembly.Add($"  pop rax");
-                assembly.Add($"  mov rbx, {operation.Value!.Number}");
+                assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  sub rax, rbx");
                 assembly.Add($"  push rax");
             }
             else if (operation.Token.Value is "*")
             {
                 assembly.Add($"  pop rax");
-                assembly.Add($"  mov rbx, {operation.Value!.Number}");
+                assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  mul rbx");
                 assembly.Add($"  push rax");
             }
             else if (operation.Token.Value is "/")
             {
                 assembly.Add($"  pop rax");
-                assembly.Add($"  mov rbx, {operation.Value!.Number}");
+                assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  div rbx");
                 assembly.Add($"  push rax");
                 // NOTE: this ignores the remainder
@@ -153,12 +162,15 @@ static void GenerateAsembly(ParsedProgram program, string filename)
         }
         else if (operation.Type is TokenType.Keyword)
         {
-            if (operation.Token.Value is "print")
+            var keyword = operation.Data?.Keyword
+                ?? throw new Exception($"Operation was of type keyword but has no value. Probably a bug in the parser. @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
+
+            if (keyword is Keyword.Print)
             {
                 assembly.Add("  pop rdi");
                 assembly.Add("  call print");
             }
-            else if (operation.Token.Value is "prints")
+            else if (keyword is Keyword.PrintString)
             {
                 assembly.Add("  pop rsi");
                 assembly.Add("  pop rdx");
@@ -173,15 +185,14 @@ static void GenerateAsembly(ParsedProgram program, string filename)
         }
         else if (operation.Type is TokenType.String)
         {
-            if (operation.Value!.Text is null)
-            {
-                throw new Exception($"Operation was of type string but has no value. Probably a bug in the parser.");
-            }
-            assembly.Add($"  mov rax, {operation.Value.Text.Length}");
+            var text = operation.Data?.Text
+                ?? throw new Exception($"Operation was of type string but has no value. Probably a bug in the parser.");
+
+            assembly.Add($"  mov rax, {text.Length}");
             assembly.Add($"  push rax");
             assembly.Add($"  push string_{stringLiterals.Count}");
 
-            stringLiterals.Add(operation.Value.Text);
+            stringLiterals.Add(text);
         }
         else
         {
@@ -218,7 +229,7 @@ static ParsedProgram ParseProgram(List<Token> tokens)
         var token = tokenQueue.Dequeue();
         if (int.TryParse(token.Value, out var value))
         {
-            program.Operations.Add(new Operation(TokenType.Number, token, new Value(Number: value)));
+            program.Operations.Add(new Operation(TokenType.Number, token, new Meta(Number: value)));
         }
         else if (token.Value is "+")
         {
@@ -228,7 +239,7 @@ static ParsedProgram ParseProgram(List<Token> tokens)
                 throw new Exception($"Expected number after +, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
             }
 
-            program.Operations.Add(new Operation(TokenType.Operator, token, new Value(Number: operand)));
+            program.Operations.Add(new Operation(TokenType.Operator, token, new Meta(Number: operand, Operator: Operator.Add)));
         }
         else if (token.Value is "-")
         {
@@ -238,7 +249,7 @@ static ParsedProgram ParseProgram(List<Token> tokens)
                 throw new Exception($"Expected number after -, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
             }
 
-            program.Operations.Add(new Operation(TokenType.Operator, token, new Value(Number: operand)));
+            program.Operations.Add(new Operation(TokenType.Operator, token, new Meta(Number: operand, Operator: Operator.Subtract)));
         }
         else if (token.Value is "*")
         {
@@ -248,7 +259,7 @@ static ParsedProgram ParseProgram(List<Token> tokens)
                 throw new Exception($"Expected number after *, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
             }
 
-            program.Operations.Add(new Operation(TokenType.Operator, token, new Value(Number: operand)));
+            program.Operations.Add(new Operation(TokenType.Operator, token, new Meta(Number: operand, Operator: Operator.Multiply)));
         }
         else if (token.Value is "/")
         {
@@ -258,19 +269,19 @@ static ParsedProgram ParseProgram(List<Token> tokens)
                 throw new Exception($"Expected number after /, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
             }
 
-            program.Operations.Add(new Operation(TokenType.Operator, token, new Value(Number: operand)));
+            program.Operations.Add(new Operation(TokenType.Operator, token, new Meta(Number: operand, Operator: Operator.Divide)));
         }
         else if (token.Value is "print")
         {
-            program.Operations.Add(new Operation(TokenType.Keyword, token));
+            program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.Print)));
         }
         else if (token.Value is "prints")
         {
-            program.Operations.Add(new Operation(TokenType.Keyword, token));
+            program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.PrintString)));
         }
         else if (token.Value.StartsWith('"') && token.Value.EndsWith('"'))
         {
-            program.Operations.Add(new Operation(TokenType.String, token, new Value(Text: token.Value[1..^1])));
+            program.Operations.Add(new Operation(TokenType.String, token, new Meta(Text: token.Value[1..^1])));
         }
         else
         {
@@ -333,8 +344,22 @@ enum TokenType
     String,
 }
 
-record Value(int? Number = null, string? Text = null);
+enum Operator
+{
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+}
 
-record Operation(TokenType Type, Token Token, Value? Value = null);
+enum Keyword
+{
+    Print,
+    PrintString,
+}
+
+record Meta(int? Number = null, string? Text = null, Keyword? Keyword = null, Operator? Operator = null);
+
+record Operation(TokenType Type, Token Token, Meta? Data = null);
 
 record ParsedProgram(List<Operation> Operations);
