@@ -195,34 +195,88 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             var number = operation.Data.Number
                 ?? throw new Exception($"Operation was of type operator but has no value. Probably a bug in the parser. @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
 
-            if (operation.Token.Value is "+")
+            if (op is Operator.Add)
             {
                 assembly.Add($"  pop rax");
                 assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  add rax, rbx");
                 assembly.Add($"  push rax");
             }
-            else if (operation.Token.Value is "-")
+            else if (op is Operator.Subtract)
             {
                 assembly.Add($"  pop rax");
                 assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  sub rax, rbx");
                 assembly.Add($"  push rax");
             }
-            else if (operation.Token.Value is "*")
+            else if (op is Operator.Multiply)
             {
                 assembly.Add($"  pop rax");
                 assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  mul rbx");
                 assembly.Add($"  push rax");
             }
-            else if (operation.Token.Value is "/")
+            else if (op is Operator.Divide)
             {
                 assembly.Add($"  pop rax");
                 assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  div rbx");
                 assembly.Add($"  push rax");
                 // NOTE: this ignores the remainder
+            }
+            else if (op is Operator.Equal)
+            {
+                assembly.Add($"  pop rax");
+                assembly.Add($"  cmp rax, {number}");
+                assembly.Add($"  mov r9, 1");
+                assembly.Add($"  mov r8, 0");
+                assembly.Add($"  cmove r8, r9");
+                assembly.Add($"  push r8");
+            }
+            else if (op is Operator.NotEqual)
+            {
+                assembly.Add($"  pop rax");
+                assembly.Add($"  cmp rax, {number}");
+                assembly.Add($"  mov r9, 1");
+                assembly.Add($"  mov r8, 0");
+                assembly.Add($"  cmovne r8, r9");
+                assembly.Add($"  push r8");
+            }
+            else if (op is Operator.LessThan)
+            {
+                assembly.Add($"  pop rax");
+                assembly.Add($"  cmp rax, {number}");
+                assembly.Add($"  mov r9, 1");
+                assembly.Add($"  mov r8, 0");
+                assembly.Add($"  cmovl r8, r9");
+                assembly.Add($"  push r8");
+            }
+            else if (op is Operator.LessThanOrEqual)
+            {
+                assembly.Add($"  pop rax");
+                assembly.Add($"  cmp rax, {number}");
+                assembly.Add($"  mov r9, 1");
+                assembly.Add($"  mov r8, 0");
+                assembly.Add($"  cmovle r8, r9");
+                assembly.Add($"  push r8");
+            }
+            else if (op is Operator.GreaterThan)
+            {
+                assembly.Add($"  pop rax");
+                assembly.Add($"  cmp rax, {number}");
+                assembly.Add($"  mov r9, 1");
+                assembly.Add($"  mov r8, 0");
+                assembly.Add($"  cmovg r8, r9");
+                assembly.Add($"  push r8");
+            }
+            else if (op is Operator.GreaterThanOrEqual)
+            {
+                assembly.Add($"  pop rax");
+                assembly.Add($"  cmp rax, {number}");
+                assembly.Add($"  mov r9, 1");
+                assembly.Add($"  mov r8, 0");
+                assembly.Add($"  cmovge r8, r9");
+                assembly.Add($"  push r8");
             }
             else
             {
@@ -258,7 +312,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             assembly.Add($"  cmp rax, 0");
             assembly.Add($"  jnz {endLabel}");
         }
-        else if (operation.Type is OperationType.BlockEnd)
+        else if (operation.Type is OperationType.Label)
         {
             var endLabel = operation.Data?.Text
                 ?? throw new Exception("Block-end-keyword has no jump label. Probably a bug in the parser.");
@@ -346,6 +400,60 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
             }
 
             program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.Divide)));
+        }
+        else if (token.Value is "=")
+        {
+            var nextToken = GetNextToken($"Expected number after =, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            if (!int.TryParse(nextToken.Value, out var operand))
+            {
+                throw new Exception($"Expected number after =, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+            }
+            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.Equal)));
+        }
+        else if (token.Value is "!=")
+        {
+            var nextToken = GetNextToken($"Expected number after !=, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            if (!int.TryParse(nextToken.Value, out var operand))
+            {
+                throw new Exception($"Expected number after !=, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+            }
+            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.NotEqual)));
+        }
+        else if (token.Value is "<")
+        {
+            var nextToken = GetNextToken($"Expected number after <, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            if (!int.TryParse(nextToken.Value, out var operand))
+            {
+                throw new Exception($"Expected number after <, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+            }
+            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.LessThan)));
+        }
+        else if (token.Value is "<=")
+        {
+            var nextToken = GetNextToken($"Expected number after <=, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            if (!int.TryParse(nextToken.Value, out var operand))
+            {
+                throw new Exception($"Expected number after <=, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+            }
+            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.LessThanOrEqual)));
+        }
+        else if (token.Value is ">")
+        {
+            var nextToken = GetNextToken($"Expected number after >, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            if (!int.TryParse(nextToken.Value, out var operand))
+            {
+                throw new Exception($"Expected number after >, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+            }
+            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.GreaterThan)));
+        }
+        else if (token.Value is ">=")
+        {
+            var nextToken = GetNextToken($"Expected number after >=, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            if (!int.TryParse(nextToken.Value, out var operand))
+            {
+                throw new Exception($"Expected number after >=, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+            }
+            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.GreaterThanOrEqual)));
         }
         else if (token.Value is "print")
         {
@@ -479,14 +587,14 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
                 var endLabel = $"end_{Guid.NewGuid().ToString().Replace("-", "")}";
                 program.Operations.Add(new Operation(OperationType.JumpIfZero, token, new Meta(Text: endLabel)));
                 program.Operations.AddRange(yesBlockProgram.Operations);
-                program.Operations.Add(new Operation(OperationType.BlockEnd, token, new Meta(Text: endLabel)));
+                program.Operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
             }
             else if (yesBlockProgram.Operations.Count is 0)
             {
                 var endLabel = $"end_{Guid.NewGuid().ToString().Replace("-", "")}";
                 program.Operations.Add(new Operation(OperationType.JumpIfNotZero, token, new Meta(Text: endLabel)));
                 program.Operations.AddRange(noBlockProgram.Operations);
-                program.Operations.Add(new Operation(OperationType.BlockEnd, token, new Meta(Text: endLabel)));
+                program.Operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
             }
             else
             {
@@ -495,9 +603,9 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
                 program.Operations.Add(new Operation(OperationType.JumpIfNotZero, token, new Meta(Text: yesLabel)));
                 program.Operations.AddRange(noBlockProgram.Operations);
                 program.Operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: endLabel)));
-                program.Operations.Add(new Operation(OperationType.BlockEnd, token, new Meta(Text: yesLabel)));
+                program.Operations.Add(new Operation(OperationType.Label, token, new Meta(Text: yesLabel)));
                 program.Operations.AddRange(yesBlockProgram.Operations);
-                program.Operations.Add(new Operation(OperationType.BlockEnd, token, new Meta(Text: endLabel)));
+                program.Operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
             }
         }
         else
@@ -625,6 +733,13 @@ enum Operator
     Subtract,
     Multiply,
     Divide,
+
+    Equal,
+    NotEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
 }
 
 enum OperationType
@@ -633,7 +748,7 @@ enum OperationType
     PrintString,
     JumpIfZero,
     JumpIfNotZero,
-    BlockEnd,
+    Label,
     Jump,
     PushNumber,
     PushString,
