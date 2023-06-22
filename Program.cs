@@ -283,6 +283,10 @@ static ParsedProgram ParseProgram(List<Token> tokens)
         }
         else if (token.Value is "+")
         {
+            if (tokenQueue.Count is 0)
+            {
+                throw new Exception($"Expected number after +, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
             var nextToken = tokenQueue.Dequeue();
             if (!int.TryParse(nextToken.Value, out var operand))
             {
@@ -293,6 +297,10 @@ static ParsedProgram ParseProgram(List<Token> tokens)
         }
         else if (token.Value is "-")
         {
+            if (tokenQueue.Count is 0)
+            {
+                throw new Exception($"Expected number after -, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
             var nextToken = tokenQueue.Dequeue();
             if (!int.TryParse(nextToken.Value, out var operand))
             {
@@ -303,6 +311,10 @@ static ParsedProgram ParseProgram(List<Token> tokens)
         }
         else if (token.Value is "*")
         {
+            if (tokenQueue.Count is 0)
+            {
+                throw new Exception($"Expected number after *, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
             var nextToken = tokenQueue.Dequeue();
             if (!int.TryParse(nextToken.Value, out var operand))
             {
@@ -313,6 +325,10 @@ static ParsedProgram ParseProgram(List<Token> tokens)
         }
         else if (token.Value is "/")
         {
+            if (tokenQueue.Count == 0)
+            {
+                throw new Exception($"Expected number after /, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
             var nextToken = tokenQueue.Dequeue();
             if (!int.TryParse(nextToken.Value, out var operand))
             {
