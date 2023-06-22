@@ -391,13 +391,20 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
                 {
                     if (nextToken.Value is "?")
                     {
-                        throw new Exception($"Nested `?` blocks are not allowed for now @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+                        (var block, tokens) = GetIfBlockTokens(new Queue<Token>(tokens.Prepend(nextToken)));
+                        foreach (var t in block)
+                        {
+                            yesBlockTokens.Enqueue(t);
+                        }
                     }
-                    if (invalidBlockTokens.Contains(nextToken.Value))
+                    else if (invalidBlockTokens.Contains(nextToken.Value))
                     {
                         throw new Exception($"Unexpected `{nextToken.Value}` inside `yes:` block @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
                     }
-                    yesBlockTokens.Enqueue(nextToken);
+                    else
+                    {
+                        yesBlockTokens.Enqueue(nextToken);
+                    }
                     nextToken = GetNextToken($"Unclosed `yes:` block @ {yesToken.Filename}:{yesToken.Line}:{yesToken.Column}");
                 }
 
@@ -428,13 +435,20 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
                 {
                     if (nextToken.Value is "?")
                     {
-                        throw new Exception($"Nested `?` blocks are not allowed for now @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+                        (var block, tokens) = GetIfBlockTokens(new Queue<Token>(tokens.Prepend(nextToken)));
+                        foreach (var t in block)
+                        {
+                            noBlockTokens.Enqueue(t);
+                        }
                     }
-                    if (invalidBlockTokens.Contains(nextToken.Value))
+                    else if (invalidBlockTokens.Contains(nextToken.Value))
                     {
                         throw new Exception($"Unexpected `{nextToken.Value}` inside `no:` block @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
                     }
-                    noBlockTokens.Enqueue(nextToken);
+                    else
+                    {
+                        noBlockTokens.Enqueue(nextToken);
+                    }
                     nextToken = GetNextToken($"Unclosed `no:` block @ {noToken.Filename}:{noToken.Line}:{noToken.Column}");
                 }
 
@@ -500,6 +514,63 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
             throw new Exception(failedMessage);
         }
         return tokens.Dequeue();
+    }
+
+    (List<Token>, Queue<Token>) GetIfBlockTokens(Queue<Token> tokens)
+    {
+        var token = tokens.Dequeue();
+        if (token.Value is not "?")
+        {
+            throw new Exception($"Expected `?` @ {token.Filename}:{token.Line}:{token.Column}");
+        }
+        var blockTokens = new List<Token> { token };
+
+        token = tokens.Dequeue();
+        if (token.Value is not "yes:" and not "no:")
+        {
+            throw new Exception($"Expected `yes:` or `no:` @ {token.Filename}:{token.Line}:{token.Column}");
+        }
+        blockTokens.Add(token);
+        var firstBlockToken = token.Value;
+
+        FindBranchBlockTokens(blockTokens);
+
+        if (tokens.Count is 0)
+        {
+            return (blockTokens, tokens);
+        }
+
+        token = tokens.Peek();
+        if (token.Value is "yes:" or "no:" && token.Value != firstBlockToken)
+        {
+            blockTokens.Add(tokens.Dequeue());
+            FindBranchBlockTokens(blockTokens);
+        }
+
+        return (blockTokens, tokens);
+
+        void FindBranchBlockTokens(List<Token> blockTokens)
+        {
+            token = tokens.Dequeue();
+            while (token.Value is not ";")
+            {
+                if (token.Value is "?")
+                {
+                    (var block, tokens) = GetIfBlockTokens(new Queue<Token>(tokens.Prepend(token)));
+                    blockTokens.AddRange(block);
+                }
+                else
+                {
+                    blockTokens.Add(token);
+                }
+                if (tokens.Count is 0)
+                {
+                    throw new Exception($"Unclosed `?` block @ {token.Filename}:{token.Line}:{token.Column}");
+                }
+                token = tokens.Dequeue();
+            }
+            blockTokens.Add(token);
+        }
     }
 }
 
