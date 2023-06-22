@@ -179,6 +179,14 @@ static void GenerateAsembly(ParsedProgram program, string filename)
 
             stringLiterals.Add(text);
         }
+        else if (operation.Type is OperationType.PushBool)
+        {
+            var boolean = operation.Data?.Bool
+                ?? throw new Exception($"Operation was of type boolean but has no value. Probably a bug in the parser. @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
+
+            assembly.Add($"  mov rax, {(boolean ? 1 : 0)}");
+            assembly.Add($"  push rax");
+        }
         else if (operation.Type is OperationType.Operator)
         {
             var op = operation.Data?.Operator
@@ -350,6 +358,14 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
         else if (token.Value.StartsWith('"') && token.Value.EndsWith('"'))
         {
             program.Operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: token.Value[1..^1])));
+        }
+        else if (token.Value is "yes")
+        {
+            program.Operations.Add(new Operation(OperationType.PushBool, token, new Meta(Bool: true)));
+        }
+        else if (token.Value is "no")
+        {
+            program.Operations.Add(new Operation(OperationType.PushBool, token, new Meta(Bool: false)));
         }
         else if (token.Value is "?")
         {
@@ -550,10 +566,11 @@ enum OperationType
     Jump,
     PushNumber,
     PushString,
+    PushBool,
     Operator,
 }
 
-record Meta(int? Number = null, string? Text = null, Operator? Operator = null);
+record Meta(int? Number = null, string? Text = null, Operator? Operator = null, bool? Bool = null);
 
 record Operation(OperationType Type, Token Token, Meta? Data = null);
 
