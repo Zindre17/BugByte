@@ -160,7 +160,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
     var stringLiterals = new List<string>();
     foreach (var operation in program.Operations)
     {
-        if (operation.Type is TokenType.Number)
+        if (operation.Type is OperationType.PushNumber)
         {
             var number = operation.Data?.Number
                 ?? throw new Exception($"Operation was of type number but has no value. Probably a bug in the parser. @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
@@ -168,7 +168,18 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             assembly.Add($"  mov rax, {number}");
             assembly.Add($"  push rax");
         }
-        else if (operation.Type is TokenType.Operator)
+        else if (operation.Type is OperationType.PushString)
+        {
+            var text = operation.Data?.Text
+                ?? throw new Exception($"Operation was of type string but has no value. Probably a bug in the parser.");
+
+            assembly.Add($"  mov rax, {text.Length}");
+            assembly.Add($"  push rax");
+            assembly.Add($"  push string_{stringLiterals.Count}");
+
+            stringLiterals.Add(text);
+        }
+        else if (operation.Type is OperationType.Operator)
         {
             var op = operation.Data?.Operator
                 ?? throw new Exception($"Operation was of type operator but has no value. Probably a bug in the parser. @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
@@ -210,67 +221,46 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 throw new Exception($"Unknown operator {op} `{operation.Token.Value}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
             }
         }
-        else if (operation.Type is TokenType.Keyword)
+        else if (operation.Type is OperationType.Print)
         {
-            var keyword = operation.Data?.Keyword
-                ?? throw new Exception($"Operation was of type keyword but has no value. Probably a bug in the parser. @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
-
-            if (keyword is Keyword.Print)
-            {
-                assembly.Add("  pop rdi");
-                assembly.Add("  call print");
-            }
-            else if (keyword is Keyword.PrintString)
-            {
-                assembly.Add("  pop rsi");
-                assembly.Add("  pop rdx");
-                assembly.Add("  mov rdi, 1");
-                assembly.Add("  mov rax, 1");
-                assembly.Add("  syscall");
-            }
-            else if (keyword is Keyword.JumpIfZero)
-            {
-                var endLabel = operation.Data.Text
-                    ?? throw new Exception("If-keyword has no jump label. Probably a bug in the parser.");
-                assembly.Add($"  pop rax");
-                assembly.Add($"  cmp rax, 0");
-                assembly.Add($"  jz {endLabel}");
-            }
-            else if (keyword is Keyword.JumpIfNotZero)
-            {
-                var endLabel = operation.Data.Text
-                    ?? throw new Exception("If-keyword has no jump label. Probably a bug in the parser.");
-                assembly.Add($"  pop rax");
-                assembly.Add($"  cmp rax, 0");
-                assembly.Add($"  jnz {endLabel}");
-            }
-            else if (keyword is Keyword.BlockEnd)
-            {
-                var endLabel = operation.Data.Text
-                    ?? throw new Exception("Block-end-keyword has no jump label. Probably a bug in the parser.");
-                assembly.Add($"{endLabel}:");
-            }
-            else if (keyword is Keyword.Jump)
-            {
-                var label = operation.Data.Text
-                    ?? throw new Exception("Jump-keyword has no jump label. Probably a bug in the parser.");
-                assembly.Add($"  jmp {label}");
-            }
-            else
-            {
-                throw new Exception($"Unknown keyword {keyword} `{operation.Token.Value}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
-            }
+            assembly.Add("  pop rdi");
+            assembly.Add("  call print");
         }
-        else if (operation.Type is TokenType.String)
+        else if (operation.Type is OperationType.PrintString)
         {
-            var text = operation.Data?.Text
-                ?? throw new Exception($"Operation was of type string but has no value. Probably a bug in the parser.");
-
-            assembly.Add($"  mov rax, {text.Length}");
-            assembly.Add($"  push rax");
-            assembly.Add($"  push string_{stringLiterals.Count}");
-
-            stringLiterals.Add(text);
+            assembly.Add("  pop rsi");
+            assembly.Add("  pop rdx");
+            assembly.Add("  mov rdi, 1");
+            assembly.Add("  mov rax, 1");
+            assembly.Add("  syscall");
+        }
+        else if (operation.Type is OperationType.JumpIfZero)
+        {
+            var endLabel = operation.Data?.Text
+                ?? throw new Exception("If-keyword has no jump label. Probably a bug in the parser.");
+            assembly.Add($"  pop rax");
+            assembly.Add($"  cmp rax, 0");
+            assembly.Add($"  jz {endLabel}");
+        }
+        else if (operation.Type is OperationType.JumpIfNotZero)
+        {
+            var endLabel = operation.Data?.Text
+                ?? throw new Exception("If-keyword has no jump label. Probably a bug in the parser.");
+            assembly.Add($"  pop rax");
+            assembly.Add($"  cmp rax, 0");
+            assembly.Add($"  jnz {endLabel}");
+        }
+        else if (operation.Type is OperationType.BlockEnd)
+        {
+            var endLabel = operation.Data?.Text
+                ?? throw new Exception("Block-end-keyword has no jump label. Probably a bug in the parser.");
+            assembly.Add($"{endLabel}:");
+        }
+        else if (operation.Type is OperationType.Jump)
+        {
+            var label = operation.Data?.Text
+                ?? throw new Exception("Jump-keyword has no jump label. Probably a bug in the parser.");
+            assembly.Add($"  jmp {label}");
         }
         else
         {
@@ -307,7 +297,7 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
         var token = tokens.Dequeue();
         if (int.TryParse(token.Value, out var value))
         {
-            program.Operations.Add(new Operation(TokenType.Number, token, new Meta(Number: value)));
+            program.Operations.Add(new Operation(OperationType.PushNumber, token, new Meta(Number: value)));
         }
         else if (token.Value is "+")
         {
@@ -317,7 +307,7 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
                 throw new Exception($"Expected number after +, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
             }
 
-            program.Operations.Add(new Operation(TokenType.Operator, token, new Meta(Number: operand, Operator: Operator.Add)));
+            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.Add)));
         }
         else if (token.Value is "-")
         {
@@ -327,7 +317,7 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
                 throw new Exception($"Expected number after -, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
             }
 
-            program.Operations.Add(new Operation(TokenType.Operator, token, new Meta(Number: operand, Operator: Operator.Subtract)));
+            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.Subtract)));
         }
         else if (token.Value is "*")
         {
@@ -337,7 +327,7 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
                 throw new Exception($"Expected number after *, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
             }
 
-            program.Operations.Add(new Operation(TokenType.Operator, token, new Meta(Number: operand, Operator: Operator.Multiply)));
+            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.Multiply)));
         }
         else if (token.Value is "/")
         {
@@ -347,19 +337,19 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
                 throw new Exception($"Expected number after /, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
             }
 
-            program.Operations.Add(new Operation(TokenType.Operator, token, new Meta(Number: operand, Operator: Operator.Divide)));
+            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.Divide)));
         }
         else if (token.Value is "print")
         {
-            program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.Print)));
+            program.Operations.Add(new Operation(OperationType.Print, token));
         }
         else if (token.Value is "prints")
         {
-            program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.PrintString)));
+            program.Operations.Add(new Operation(OperationType.PrintString, token));
         }
         else if (token.Value.StartsWith('"') && token.Value.EndsWith('"'))
         {
-            program.Operations.Add(new Operation(TokenType.String, token, new Meta(Text: token.Value[1..^1])));
+            program.Operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: token.Value[1..^1])));
         }
         else if (token.Value is "?")
         {
@@ -457,27 +447,27 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
             if (noBlockProgram.Operations.Count is 0)
             {
                 var endLabel = $"end_{Guid.NewGuid().ToString().Replace("-", "")}";
-                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.JumpIfZero, Text: endLabel)));
+                program.Operations.Add(new Operation(OperationType.JumpIfZero, token, new Meta(Text: endLabel)));
                 program.Operations.AddRange(yesBlockProgram.Operations);
-                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.BlockEnd, Text: endLabel)));
+                program.Operations.Add(new Operation(OperationType.BlockEnd, token, new Meta(Text: endLabel)));
             }
             else if (yesBlockProgram.Operations.Count is 0)
             {
                 var endLabel = $"end_{Guid.NewGuid().ToString().Replace("-", "")}";
-                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.JumpIfNotZero, Text: endLabel)));
+                program.Operations.Add(new Operation(OperationType.JumpIfNotZero, token, new Meta(Text: endLabel)));
                 program.Operations.AddRange(noBlockProgram.Operations);
-                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.BlockEnd, Text: endLabel)));
+                program.Operations.Add(new Operation(OperationType.BlockEnd, token, new Meta(Text: endLabel)));
             }
             else
             {
                 var yesLabel = $"yes_{Guid.NewGuid().ToString().Replace("-", "")}";
                 var endLabel = $"end_{Guid.NewGuid().ToString().Replace("-", "")}";
-                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.JumpIfNotZero, Text: yesLabel)));
+                program.Operations.Add(new Operation(OperationType.JumpIfNotZero, token, new Meta(Text: yesLabel)));
                 program.Operations.AddRange(noBlockProgram.Operations);
-                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.Jump, Text: endLabel)));
-                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.BlockEnd, Text: yesLabel)));
+                program.Operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: endLabel)));
+                program.Operations.Add(new Operation(OperationType.BlockEnd, token, new Meta(Text: yesLabel)));
                 program.Operations.AddRange(yesBlockProgram.Operations);
-                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.BlockEnd, Text: endLabel)));
+                program.Operations.Add(new Operation(OperationType.BlockEnd, token, new Meta(Text: endLabel)));
             }
         }
         else
@@ -542,14 +532,6 @@ static Queue<Token> LexProgram(string filename)
 
 record Token(string Filename, string Value, int Line, int Column);
 
-enum TokenType
-{
-    Number,
-    Operator,
-    Keyword,
-    String,
-}
-
 enum Operator
 {
     Add,
@@ -558,7 +540,7 @@ enum Operator
     Divide,
 }
 
-enum Keyword
+enum OperationType
 {
     Print,
     PrintString,
@@ -566,10 +548,13 @@ enum Keyword
     JumpIfNotZero,
     BlockEnd,
     Jump,
+    PushNumber,
+    PushString,
+    Operator,
 }
 
-record Meta(int? Number = null, string? Text = null, Keyword? Keyword = null, Operator? Operator = null);
+record Meta(int? Number = null, string? Text = null, Operator? Operator = null);
 
-record Operation(TokenType Type, Token Token, Meta? Data = null);
+record Operation(OperationType Type, Token Token, Meta? Data = null);
 
 record ParsedProgram(List<Operation> Operations);
