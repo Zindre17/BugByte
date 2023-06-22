@@ -207,7 +207,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             }
             else
             {
-                throw new Exception($"Unknown operator `{operation.Token.Value}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
+                throw new Exception($"Unknown operator {op} `{operation.Token.Value}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
             }
         }
         else if (operation.Type is TokenType.Keyword)
@@ -228,9 +228,37 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 assembly.Add("  mov rax, 1");
                 assembly.Add("  syscall");
             }
+            else if (keyword is Keyword.JumpIfZero)
+            {
+                var endLabel = operation.Data.Text
+                    ?? throw new Exception("If-keyword has no jump label. Probably a bug in the parser.");
+                assembly.Add($"  pop rax");
+                assembly.Add($"  cmp rax, 0");
+                assembly.Add($"  jz {endLabel}");
+            }
+            else if (keyword is Keyword.JumpIfNotZero)
+            {
+                var endLabel = operation.Data.Text
+                    ?? throw new Exception("If-keyword has no jump label. Probably a bug in the parser.");
+                assembly.Add($"  pop rax");
+                assembly.Add($"  cmp rax, 0");
+                assembly.Add($"  jnz {endLabel}");
+            }
+            else if (keyword is Keyword.BlockEnd)
+            {
+                var endLabel = operation.Data.Text
+                    ?? throw new Exception("Block-end-keyword has no jump label. Probably a bug in the parser.");
+                assembly.Add($"{endLabel}:");
+            }
+            else if (keyword is Keyword.Jump)
+            {
+                var label = operation.Data.Text
+                    ?? throw new Exception("Jump-keyword has no jump label. Probably a bug in the parser.");
+                assembly.Add($"  jmp {label}");
+            }
             else
             {
-                throw new Exception($"Unknown keyword `{operation.Token.Value}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
+                throw new Exception($"Unknown keyword {keyword} `{operation.Token.Value}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
             }
         }
         else if (operation.Type is TokenType.String)
@@ -270,24 +298,20 @@ static void GenerateAsembly(ParsedProgram program, string filename)
     File.WriteAllLines($"{filename.Split(".")[0]}.asm", assembly);
 }
 
-static ParsedProgram ParseProgram(List<Token> tokens)
+static ParsedProgram ParseProgram(Queue<Token> tokens)
 {
     var program = new ParsedProgram(new List<Operation>());
-    var tokenQueue = new Queue<Token>(tokens);
-    while (tokenQueue.Count > 0)
+
+    while (tokens.Count > 0)
     {
-        var token = tokenQueue.Dequeue();
+        var token = tokens.Dequeue();
         if (int.TryParse(token.Value, out var value))
         {
             program.Operations.Add(new Operation(TokenType.Number, token, new Meta(Number: value)));
         }
         else if (token.Value is "+")
         {
-            if (tokenQueue.Count is 0)
-            {
-                throw new Exception($"Expected number after +, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var nextToken = tokenQueue.Dequeue();
+            var nextToken = GetNextToken($"Expected number after +, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
             if (!int.TryParse(nextToken.Value, out var operand))
             {
                 throw new Exception($"Expected number after +, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
@@ -297,11 +321,7 @@ static ParsedProgram ParseProgram(List<Token> tokens)
         }
         else if (token.Value is "-")
         {
-            if (tokenQueue.Count is 0)
-            {
-                throw new Exception($"Expected number after -, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var nextToken = tokenQueue.Dequeue();
+            var nextToken = GetNextToken($"Expected number after -, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
             if (!int.TryParse(nextToken.Value, out var operand))
             {
                 throw new Exception($"Expected number after -, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
@@ -311,11 +331,7 @@ static ParsedProgram ParseProgram(List<Token> tokens)
         }
         else if (token.Value is "*")
         {
-            if (tokenQueue.Count is 0)
-            {
-                throw new Exception($"Expected number after *, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var nextToken = tokenQueue.Dequeue();
+            var nextToken = GetNextToken($"Expected number after *, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
             if (!int.TryParse(nextToken.Value, out var operand))
             {
                 throw new Exception($"Expected number after *, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
@@ -325,11 +341,7 @@ static ParsedProgram ParseProgram(List<Token> tokens)
         }
         else if (token.Value is "/")
         {
-            if (tokenQueue.Count == 0)
-            {
-                throw new Exception($"Expected number after /, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var nextToken = tokenQueue.Dequeue();
+            var nextToken = GetNextToken($"Expected number after /, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
             if (!int.TryParse(nextToken.Value, out var operand))
             {
                 throw new Exception($"Expected number after /, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
@@ -349,18 +361,146 @@ static ParsedProgram ParseProgram(List<Token> tokens)
         {
             program.Operations.Add(new Operation(TokenType.String, token, new Meta(Text: token.Value[1..^1])));
         }
+        else if (token.Value is "?")
+        {
+            var nextToken = GetNextToken($"Expected `yes:` or `no:` after ?, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            if (nextToken.Value is not "yes:" and not "no:")
+            {
+                throw new Exception($"Expected `yes:` or `no:` after ?, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+            }
+
+            var yesBlockTokens = new Queue<Token>();
+            var noBlockTokens = new Queue<Token>();
+            var invalidBlockTokens = new List<string>
+            {
+                "yes:",
+                "no:",
+            };
+        other:
+            if (nextToken.Value is "yes:")
+            {
+                var yesToken = nextToken;
+                nextToken = GetNextToken($"Unclosed `yes:` block @ {yesToken.Filename}:{yesToken.Line}:{yesToken.Column}");
+                while (nextToken.Value is not ";")
+                {
+                    if (nextToken.Value is "?")
+                    {
+                        throw new Exception($"Nested `?` blocks are not allowed for now @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+                    }
+                    if (invalidBlockTokens.Contains(nextToken.Value))
+                    {
+                        throw new Exception($"Unexpected `{nextToken.Value}` inside `yes:` block @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+                    }
+                    yesBlockTokens.Enqueue(nextToken);
+                    nextToken = GetNextToken($"Unclosed `yes:` block @ {yesToken.Filename}:{yesToken.Line}:{yesToken.Column}");
+                }
+
+                if (yesBlockTokens.Count == 0)
+                {
+                    throw new Exception($"Empty `yes:` block @ {yesToken.Filename}:{yesToken.Line}:{yesToken.Column}");
+                }
+
+                if (tokens.Count > 0)
+                {
+                    nextToken = tokens.Peek();
+                    if (nextToken.Value is "no:")
+                    {
+                        if (noBlockTokens.Count is not 0)
+                        {
+                            throw new Exception($"`no:` block is already defined for this `?` statement @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+                        }
+                        nextToken = tokens.Dequeue();
+                        goto other;
+                    }
+                }
+            }
+            else
+            {
+                var noToken = nextToken;
+                nextToken = GetNextToken($"Unclosed `no:` block @ {noToken.Filename}:{noToken.Line}:{noToken.Column}");
+                while (nextToken.Value is not ";")
+                {
+                    if (nextToken.Value is "?")
+                    {
+                        throw new Exception($"Nested `?` blocks are not allowed for now @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+                    }
+                    if (invalidBlockTokens.Contains(nextToken.Value))
+                    {
+                        throw new Exception($"Unexpected `{nextToken.Value}` inside `no:` block @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+                    }
+                    noBlockTokens.Enqueue(nextToken);
+                    nextToken = GetNextToken($"Unclosed `no:` block @ {noToken.Filename}:{noToken.Line}:{noToken.Column}");
+                }
+
+                if (noBlockTokens.Count == 0)
+                {
+                    throw new Exception($"Empty `no:` block @ {noToken.Filename}:{noToken.Line}:{noToken.Column}");
+                }
+
+                if (tokens.Count > 0)
+                {
+                    nextToken = tokens.Peek();
+                    if (nextToken.Value is "yes:")
+                    {
+                        if (yesBlockTokens.Count is not 0)
+                        {
+                            throw new Exception($"`yes:` block is already defined for this `?` statement @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+                        }
+                        nextToken = tokens.Dequeue();
+                        goto other;
+                    }
+                }
+            }
+
+            var noBlockProgram = ParseProgram(noBlockTokens);
+            var yesBlockProgram = ParseProgram(yesBlockTokens);
+            if (noBlockProgram.Operations.Count is 0)
+            {
+                var endLabel = $"end_{Guid.NewGuid().ToString().Replace("-", "")}";
+                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.JumpIfZero, Text: endLabel)));
+                program.Operations.AddRange(yesBlockProgram.Operations);
+                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.BlockEnd, Text: endLabel)));
+            }
+            else if (yesBlockProgram.Operations.Count is 0)
+            {
+                var endLabel = $"end_{Guid.NewGuid().ToString().Replace("-", "")}";
+                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.JumpIfNotZero, Text: endLabel)));
+                program.Operations.AddRange(noBlockProgram.Operations);
+                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.BlockEnd, Text: endLabel)));
+            }
+            else
+            {
+                var yesLabel = $"yes_{Guid.NewGuid().ToString().Replace("-", "")}";
+                var endLabel = $"end_{Guid.NewGuid().ToString().Replace("-", "")}";
+                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.JumpIfNotZero, Text: yesLabel)));
+                program.Operations.AddRange(noBlockProgram.Operations);
+                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.Jump, Text: endLabel)));
+                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.BlockEnd, Text: yesLabel)));
+                program.Operations.AddRange(yesBlockProgram.Operations);
+                program.Operations.Add(new Operation(TokenType.Keyword, token, new Meta(Keyword: Keyword.BlockEnd, Text: endLabel)));
+            }
+        }
         else
         {
             throw new Exception($"Unknown token `{token.Value}` @ {token.Filename}:{token.Line}:{token.Column}");
         }
     }
     return program;
+
+    Token GetNextToken(string failedMessage)
+    {
+        if (tokens.Count == 0)
+        {
+            throw new Exception(failedMessage);
+        }
+        return tokens.Dequeue();
+    }
 }
 
-static List<Token> LexProgram(string filename)
+static Queue<Token> LexProgram(string filename)
 {
     var lines = File.ReadAllLines(filename);
-    var words = new List<Token>();
+    var words = new Queue<Token>();
     var lineNr = 1;
     foreach (var line in lines)
     {
@@ -376,13 +516,13 @@ static List<Token> LexProgram(string filename)
                     throw new Exception($"Missing end quote for string literal `{remainingLine}` @ {filename}:{lineNr}:{currentColumn}");
                 }
                 var stringLiteral = remainingLine[..(endQuoteIndex + 1)];
-                words.Add(new Token(filename, stringLiteral, lineNr, currentColumn));
+                words.Enqueue(new Token(filename, stringLiteral, lineNr, currentColumn));
                 remainingLine = remainingLine[(endQuoteIndex + 2)..].TrimStart();
             }
             else
             {
                 var split = remainingLine.Split(' ', 2);
-                words.Add(new Token(filename, split[0], lineNr, currentColumn));
+                words.Enqueue(new Token(filename, split[0], lineNr, currentColumn));
                 if (split.Length > 1)
                 {
                     currentColumn += split[0].Length + 1; // +1 for the space
@@ -422,6 +562,10 @@ enum Keyword
 {
     Print,
     PrintString,
+    JumpIfZero,
+    JumpIfNotZero,
+    BlockEnd,
+    Jump,
 }
 
 record Meta(int? Number = null, string? Text = null, Keyword? Keyword = null, Operator? Operator = null);
