@@ -173,7 +173,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             var text = operation.Data?.Text
                 ?? throw new Exception($"Operation was of type string but has no value. Probably a bug in the parser.");
 
-            assembly.Add($"  mov rax, {text.Length}");
+            assembly.Add($"  mov rax, {text.Length - text.Count(c => c == '\\')}");
             assembly.Add($"  push rax");
             assembly.Add($"  push string_{stringLiterals.Count}");
 
