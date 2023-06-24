@@ -165,6 +165,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             var number = operation.Data?.Number
                 ?? throw new Exception($"Operation was of type number but has no value. Probably a bug in the parser. @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
 
+            assembly.Add($";-- number --");
             assembly.Add($"  mov rax, {number}");
             assembly.Add($"  push rax");
         }
@@ -173,6 +174,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             var text = operation.Data?.Text
                 ?? throw new Exception($"Operation was of type string but has no value. Probably a bug in the parser.");
 
+            assembly.Add($";-- string --");
             assembly.Add($"  mov rax, {text.Length - text.Count(c => c == '\\')}");
             assembly.Add($"  push rax");
             assembly.Add($"  push string_{stringLiterals.Count}");
@@ -184,6 +186,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             var boolean = operation.Data?.Bool
                 ?? throw new Exception($"Operation was of type boolean but has no value. Probably a bug in the parser. @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
 
+            assembly.Add(";-- boolean --");
             assembly.Add($"  mov rax, {(boolean ? 1 : 0)}");
             assembly.Add($"  push rax");
         }
@@ -197,6 +200,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
 
             if (op is Operator.Add)
             {
+                assembly.Add(";-- add --");
                 assembly.Add($"  pop rax");
                 assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  add rax, rbx");
@@ -204,6 +208,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             }
             else if (op is Operator.Subtract)
             {
+                assembly.Add(";-- subtract --");
                 assembly.Add($"  pop rax");
                 assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  sub rax, rbx");
@@ -211,6 +216,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             }
             else if (op is Operator.Multiply)
             {
+                assembly.Add(";-- multiply --");
                 assembly.Add($"  pop rax");
                 assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  mul rbx");
@@ -218,6 +224,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             }
             else if (op is Operator.Divide)
             {
+                assembly.Add(";-- divide --");
                 assembly.Add($"  pop rax");
                 assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  div rbx");
@@ -226,57 +233,63 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             }
             else if (op is Operator.Equal)
             {
+                assembly.Add(";-- equal --");
+                assembly.Add($"  mov rcx, 1");
+                assembly.Add($"  mov rdx, 0");
                 assembly.Add($"  pop rax");
                 assembly.Add($"  cmp rax, {number}");
-                assembly.Add($"  mov r9, 1");
-                assembly.Add($"  mov r8, 0");
-                assembly.Add($"  cmove r8, r9");
-                assembly.Add($"  push r8");
+                assembly.Add($"  cmove rdx, rcx");
+                assembly.Add($"  push rdx");
             }
             else if (op is Operator.NotEqual)
             {
+                assembly.Add(";-- not equal --");
+                assembly.Add($"  mov rcx, 1");
+                assembly.Add($"  mov rdx, 0");
                 assembly.Add($"  pop rax");
                 assembly.Add($"  cmp rax, {number}");
-                assembly.Add($"  mov r9, 1");
-                assembly.Add($"  mov r8, 0");
-                assembly.Add($"  cmovne r8, r9");
-                assembly.Add($"  push r8");
+                assembly.Add($"  cmovne rdx, rcx");
+                assembly.Add($"  push rdx");
             }
             else if (op is Operator.LessThan)
             {
+                assembly.Add(";-- less than --");
+                assembly.Add($"  mov rcx, 1");
+                assembly.Add($"  mov rdx, 0");
                 assembly.Add($"  pop rax");
                 assembly.Add($"  cmp rax, {number}");
-                assembly.Add($"  mov r9, 1");
-                assembly.Add($"  mov r8, 0");
-                assembly.Add($"  cmovl r8, r9");
-                assembly.Add($"  push r8");
+                assembly.Add($"  cmovl rdx, rcx");
+                assembly.Add($"  push rdx");
             }
             else if (op is Operator.LessThanOrEqual)
             {
+                assembly.Add(";-- less than or equal --");
+                assembly.Add($"  mov rcx, 1");
+                assembly.Add($"  mov rdx, 0");
                 assembly.Add($"  pop rax");
                 assembly.Add($"  cmp rax, {number}");
-                assembly.Add($"  mov r9, 1");
-                assembly.Add($"  mov r8, 0");
-                assembly.Add($"  cmovle r8, r9");
-                assembly.Add($"  push r8");
+                assembly.Add($"  cmovle rdx, rcx");
+                assembly.Add($"  push rdx");
             }
             else if (op is Operator.GreaterThan)
             {
+                assembly.Add(";-- greater than --");
+                assembly.Add($"  mov rcx, 1");
+                assembly.Add($"  mov rdx, 0");
                 assembly.Add($"  pop rax");
                 assembly.Add($"  cmp rax, {number}");
-                assembly.Add($"  mov r9, 1");
-                assembly.Add($"  mov r8, 0");
-                assembly.Add($"  cmovg r8, r9");
-                assembly.Add($"  push r8");
+                assembly.Add($"  cmovg rdx, rcx");
+                assembly.Add($"  push rdx");
             }
             else if (op is Operator.GreaterThanOrEqual)
             {
+                assembly.Add(";-- greater than or equal --");
+                assembly.Add($"  mov rcx, 1");
+                assembly.Add($"  mov rdx, 0");
                 assembly.Add($"  pop rax");
                 assembly.Add($"  cmp rax, {number}");
-                assembly.Add($"  mov r9, 1");
-                assembly.Add($"  mov r8, 0");
-                assembly.Add($"  cmovge r8, r9");
-                assembly.Add($"  push r8");
+                assembly.Add($"  cmovge rdx, rcx");
+                assembly.Add($"  push rdx");
             }
             else
             {
@@ -285,11 +298,13 @@ static void GenerateAsembly(ParsedProgram program, string filename)
         }
         else if (operation.Type is OperationType.Print)
         {
+            assembly.Add(";-- print --");
             assembly.Add("  pop rdi");
             assembly.Add("  call print");
         }
         else if (operation.Type is OperationType.PrintString)
         {
+            assembly.Add(";-- print string --");
             assembly.Add("  pop rsi");
             assembly.Add("  pop rdx");
             assembly.Add("  mov rdi, 1");
@@ -300,6 +315,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
         {
             var endLabel = operation.Data?.Text
                 ?? throw new Exception("If-keyword has no jump label. Probably a bug in the parser.");
+            assembly.Add(";-- jump if zero --");
             assembly.Add($"  pop rax");
             assembly.Add($"  cmp rax, 0");
             assembly.Add($"  jz {endLabel}");
@@ -308,6 +324,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
         {
             var endLabel = operation.Data?.Text
                 ?? throw new Exception("If-keyword has no jump label. Probably a bug in the parser.");
+            assembly.Add(";-- jump if not zero --");
             assembly.Add($"  pop rax");
             assembly.Add($"  cmp rax, 0");
             assembly.Add($"  jnz {endLabel}");
@@ -322,6 +339,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
         {
             var label = operation.Data?.Text
                 ?? throw new Exception("Jump-keyword has no jump label. Probably a bug in the parser.");
+            assembly.Add(";-- jump --");
             assembly.Add($"  jmp {label}");
         }
         else
