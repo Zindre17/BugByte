@@ -236,7 +236,16 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  div rbx");
                 assembly.Add($"  push rax");
-                // NOTE: this ignores the remainder
+                // TODO: merge this with modulo
+            }
+            else if (op is Operator.Modulo)
+            {
+                assembly.Add(";-- modulo --");
+                assembly.Add($"  xor rdx, rdx");
+                assembly.Add($"  pop rax");
+                assembly.Add($"  mov rbx, {number}");
+                assembly.Add($"  div rbx");
+                assembly.Add($"  push rdx");
             }
             else if (op is Operator.Equal)
             {
@@ -425,6 +434,16 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
             }
 
             program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.Divide)));
+        }
+        else if (token.Value is "%")
+        {
+            var nextToken = GetNextToken($"Expected number after %, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            if (!int.TryParse(nextToken.Value, out var operand))
+            {
+                throw new Exception($"Expected number after %, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+            }
+
+            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.Modulo)));
         }
         else if (token.Value is "=")
         {
@@ -762,6 +781,7 @@ enum Operator
     Subtract,
     Multiply,
     Divide,
+    Modulo,
 
     Equal,
     NotEqual,
