@@ -656,6 +656,46 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
                 program.Operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
             }
         }
+        else if (token.Value is "while")
+        {
+            var whileLabel = $"while_{Guid.NewGuid().ToString().Replace("-", "")}";
+            program.Operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileLabel)));
+
+            var conditionTokens = new Queue<Token>();
+            var nextToken = GetNextToken($"Missing `while` condition @ {token.Filename}:{token.Line}:{token.Column}");
+            while (nextToken.Value is not ":")
+            {
+                conditionTokens.Enqueue(nextToken);
+                nextToken = GetNextToken($"Missing `while` condition @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            program.Operations.AddRange(ParseProgram(conditionTokens).Operations);
+
+            var endLabel = $"end_{Guid.NewGuid().ToString().Replace("-", "")}";
+            program.Operations.Add(new Operation(OperationType.JumpIfZero, nextToken, new Meta(Text: endLabel)));
+
+            var whileBlockTokens = new Queue<Token>();
+            nextToken = GetNextToken($"Unclosed `while` block @ {token.Filename}:{token.Line}:{token.Column}");
+            while (nextToken.Value is not ";")
+            {
+                if (nextToken.Value is "?")
+                {
+                    (var blockTokens, tokens) = GetIfBlockTokens(new Queue<Token>(tokens.Prepend(nextToken)));
+                    foreach (var t in blockTokens)
+                    {
+                        whileBlockTokens.Enqueue(t);
+                    }
+                }
+                else
+                {
+                    whileBlockTokens.Enqueue(nextToken);
+                }
+                nextToken = GetNextToken($"Unclosed `while` block @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            program.Operations.AddRange(ParseProgram(whileBlockTokens).Operations);
+
+            program.Operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: whileLabel)));
+            program.Operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
+        }
         else
         {
             throw new Exception($"Unknown token `{token.Value}` @ {token.Filename}:{token.Line}:{token.Column}");
