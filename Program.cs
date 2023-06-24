@@ -190,6 +190,13 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             assembly.Add($"  mov rax, {(boolean ? 1 : 0)}");
             assembly.Add($"  push rax");
         }
+        else if (operation.Type is OperationType.PushDuplicate)
+        {
+            assembly.Add(";-- duplicate --");
+            assembly.Add($"  pop rax");
+            assembly.Add($"  push rax");
+            assembly.Add($"  push rax");
+        }
         else if (operation.Type is OperationType.Operator)
         {
             var op = operation.Data?.Operator
@@ -472,6 +479,10 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
                 throw new Exception($"Expected number after >=, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
             }
             program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.GreaterThanOrEqual)));
+        }
+        else if (token.Value is "dup")
+        {
+            program.Operations.Add(new Operation(OperationType.PushDuplicate, token));
         }
         else if (token.Value is "print")
         {
@@ -771,6 +782,7 @@ enum OperationType
     PushNumber,
     PushString,
     PushBool,
+    PushDuplicate,
     Operator,
 }
 
