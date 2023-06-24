@@ -1,0 +1,25 @@
+{
+  "name": "bugbytehighlights",
+  "displayName": "BugByteHighlights",
+  "description": "Syntax highlighting of BugByte",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.79.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "bugbyte",
+      "aliases": ["BugByte", "bugbyte"],
+      "extensions": [".bb"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "bugbyte",
+      "scopeName": "source.bugbyte",
+      "path": "./syntaxes/bugbyte.tmLanguage.json"
+    }]
+  }
+}

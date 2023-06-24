@@ -1,0 +1,65 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "BugByte",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#constants"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.while.bugbyte",
+					"match": "\\b(while)\\b"
+				},
+				{
+					"name": "keyword.operator.arithmetic.bugbyte",
+					"match": "(?<!\\S)(\\+|\\-|\\*|\\/|\\%)(?!\\S)"
+				},
+				{
+					"name": "keyword.operator.comparison.bugbyte",
+					"match": "(?<!\\S)(\\=|\\!\\=|\\<|\\<\\=|\\>|\\>\\=)(?!\\S)"
+				},
+				{
+					"name": "keyword.control.if.bugbyte",
+					"match": "(?<!\\S)(\\?)(?!\\S)"
+				},
+				{
+					"name": "keyword.control.if.branches.bugbyte",
+					"match": "\\b(yes|no)\\:(?!\\S)"
+				}
+			]
+		},
+		"constants": {
+			"patterns": [
+				{
+					"name": "constant.language.bugbyte",
+					"match": "\\b(dup|drop|print|prints)\\b"
+				},
+				{
+					"name": "constant.numeric.bugbyte",
+					"match": "\\b(\\d+)\\b"
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.bugbyte",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.bugbyte",
+					"match": "\\\\."
+				}
+			]
+		}
+	},
+	"scopeName": "source.bugbyte"
+}

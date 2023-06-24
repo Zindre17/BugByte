@@ -1,0 +1,67 @@
+{
+    // symbols used as brackets
+    "brackets": [
+        [
+            ":",
+            ";"
+        ],
+        [
+            "yes:",
+            ";"
+        ],
+        [
+            "no:",
+            ";"
+        ]
+    ],
+    // symbols that are auto closed when typing
+    "autoClosingPairs": [
+        [
+            ":",
+            ";"
+        ],
+        [
+            "yes:",
+            ";"
+        ],
+        [
+            "no:",
+            ";"
+        ],
+        [
+            "\"",
+            "\""
+        ],
+        [
+            "'",
+            "'"
+        ]
+    ],
+    // symbols that can be used to surround a selection
+    "surroundingPairs": [
+        [
+            "yes:",
+            ";"
+        ],
+        [
+            "while",
+            ":"
+        ],
+        [
+            ":",
+            ";"
+        ],
+        [
+            "no:",
+            ";"
+        ],
+        [
+            "\"",
+            "\""
+        ],
+        [
+            "'",
+            "'"
+        ]
+    ]
+}
