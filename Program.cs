@@ -556,7 +556,7 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
                 {
                     if (nextToken.Value is "?")
                     {
-                        (var block, tokens) = GetIfBlockTokens(new Queue<Token>(tokens.Prepend(nextToken)));
+                        var block = GetIfBlockTokens(nextToken);
                         foreach (var t in block)
                         {
                             yesBlockTokens.Enqueue(t);
@@ -600,7 +600,7 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
                 {
                     if (nextToken.Value is "?")
                     {
-                        (var block, tokens) = GetIfBlockTokens(new Queue<Token>(tokens.Prepend(nextToken)));
+                        var block = GetIfBlockTokens(nextToken);
                         foreach (var t in block)
                         {
                             noBlockTokens.Enqueue(t);
@@ -686,13 +686,23 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
             nextToken = GetNextToken($"Unclosed `while` block @ {token.Filename}:{token.Line}:{token.Column}");
             while (nextToken.Value is not ";")
             {
-                if (nextToken.Value is "?")
+                if (nextToken.Value is "while")
                 {
-                    (var blockTokens, tokens) = GetIfBlockTokens(new Queue<Token>(tokens.Prepend(nextToken)));
+                    var blockTokens = GetWhileBlockTokens(nextToken);
                     foreach (var t in blockTokens)
                     {
                         whileBlockTokens.Enqueue(t);
                     }
+
+                }
+                else if (nextToken.Value is "?")
+                {
+                    var blockTokens = GetIfBlockTokens(nextToken);
+                    foreach (var t in blockTokens)
+                    {
+                        whileBlockTokens.Enqueue(t);
+                    }
+
                 }
                 else
                 {
@@ -700,6 +710,7 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
                 }
                 nextToken = GetNextToken($"Unclosed `while` block @ {token.Filename}:{token.Line}:{token.Column}");
             }
+
             program.Operations.AddRange(ParseProgram(whileBlockTokens).Operations);
 
             program.Operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: whileLabel)));
@@ -712,6 +723,32 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
     }
     return program;
 
+    List<Token> GetWhileBlockTokens(Token whileToken)
+    {
+        var blockTokens = new List<Token> { whileToken };
+
+        var token = GetNextToken($"Unclosed `while` block @ {whileToken.Filename}:{whileToken.Line}:{whileToken.Column}");
+        while (token.Value is not ";")
+        {
+            if (token.Value is "while")
+            {
+                blockTokens.AddRange(GetWhileBlockTokens(token));
+            }
+            else if (token.Value is "?")
+            {
+                blockTokens.AddRange(GetIfBlockTokens(token));
+            }
+            else
+            {
+                blockTokens.Add(token);
+            }
+            token = GetNextToken($"Unclosed `while` block @ {whileToken.Filename}:{whileToken.Line}:{whileToken.Column}");
+        }
+        blockTokens.Add(token);
+
+        return blockTokens;
+    }
+
     Token GetNextToken(string failedMessage)
     {
         if (tokens.Count == 0)
@@ -721,16 +758,11 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
         return tokens.Dequeue();
     }
 
-    (List<Token>, Queue<Token>) GetIfBlockTokens(Queue<Token> tokens)
+    List<Token> GetIfBlockTokens(Token ifToken)
     {
-        var token = tokens.Dequeue();
-        if (token.Value is not "?")
-        {
-            throw new Exception($"Expected `?` @ {token.Filename}:{token.Line}:{token.Column}");
-        }
-        var blockTokens = new List<Token> { token };
+        var blockTokens = new List<Token> { ifToken };
 
-        token = tokens.Dequeue();
+        var token = GetNextToken($"Unclosed `if` block @ {ifToken.Filename}:{ifToken.Line}:{ifToken.Column}");
         if (token.Value is not "yes:" and not "no:")
         {
             throw new Exception($"Expected `yes:` or `no:` @ {token.Filename}:{token.Line}:{token.Column}");
@@ -738,31 +770,31 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
         blockTokens.Add(token);
         var firstBlockToken = token.Value;
 
-        FindBranchBlockTokens(blockTokens);
+        blockTokens.AddRange(FindBranchBlockTokens());
 
         if (tokens.Count is 0)
         {
-            return (blockTokens, tokens);
+            return blockTokens;
         }
 
         token = tokens.Peek();
         if (token.Value is "yes:" or "no:" && token.Value != firstBlockToken)
         {
             blockTokens.Add(tokens.Dequeue());
-            FindBranchBlockTokens(blockTokens);
+            blockTokens.AddRange(FindBranchBlockTokens());
         }
 
-        return (blockTokens, tokens);
+        return blockTokens;
 
-        void FindBranchBlockTokens(List<Token> blockTokens)
+        List<Token> FindBranchBlockTokens()
         {
+            var blockTokens = new List<Token>();
             token = tokens.Dequeue();
             while (token.Value is not ";")
             {
                 if (token.Value is "?")
                 {
-                    (var block, tokens) = GetIfBlockTokens(new Queue<Token>(tokens.Prepend(token)));
-                    blockTokens.AddRange(block);
+                    blockTokens.AddRange(GetIfBlockTokens(token));
                 }
                 else
                 {
@@ -775,6 +807,7 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
                 token = tokens.Dequeue();
             }
             blockTokens.Add(token);
+            return blockTokens;
         }
     }
 }
