@@ -211,6 +211,14 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             assembly.Add($"  push rax");
             assembly.Add($"  push rbx");
         }
+        else if (operation.Type is OperationType.Swap)
+        {
+            assembly.Add(";-- swap --");
+            assembly.Add($"  pop rax");
+            assembly.Add($"  pop rbx");
+            assembly.Add($"  push rax");
+            assembly.Add($"  push rbx");
+        }
         else if (operation.Type is OperationType.Operator)
         {
             var op = operation.Data?.Operator
@@ -524,6 +532,10 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
         else if (token.Value is "over")
         {
             program.Operations.Add(new Operation(OperationType.Over, token));
+        }
+        else if (token.Value is "swap")
+        {
+            program.Operations.Add(new Operation(OperationType.Swap, token));
         }
         else if (token.Value is "print")
         {
@@ -896,6 +908,7 @@ enum OperationType
     Jump,
     Drop,
     Over,
+    Swap,
     PushNumber,
     PushString,
     PushBool,

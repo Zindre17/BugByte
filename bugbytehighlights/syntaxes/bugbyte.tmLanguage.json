@@ -41,7 +41,7 @@
 			"patterns": [
 				{
 					"name": "constant.language.bugbyte",
-					"match": "\\b(dup|drop|over|print|prints)\\b"
+					"match": "\\b(dup|drop|over|swap|print|prints)\\b"
 				},
 				{
 					"name": "constant.numeric.bugbyte",
