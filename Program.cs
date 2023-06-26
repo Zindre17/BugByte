@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Text;
 
 if (args.Length is 0)
 {
@@ -17,7 +18,12 @@ var words = LexProgram(fileName);
 
 try
 {
-    var program = ParseProgram(words);
+    var startBlock = GroupBlock(words);
+    var (program, typeStack) = ParseProgram(startBlock, new());
+    if (typeStack.Count > 0)
+    {
+        throw new Exception($"The program must have an empty stack at the end. Got {typeStack.Count} items on the stack.");
+    }
     GenerateAsembly(program, fileName);
 }
 catch (Exception e)
@@ -50,6 +56,58 @@ if (!RunExternalCommand("chmod", $"+x {fileNameWithoutExtension}"))
 }
 
 RunExternalCommand($"./{fileNameWithoutExtension}", "", false);
+
+static Block GroupBlock(Queue<Token> tokens, string? expectedClosingTag = null)
+{
+    var block = new Block(new(), new());
+    while (tokens.Count > 0)
+    {
+        var token = tokens.Dequeue();
+        if (expectedClosingTag is not null && (token.Value == expectedClosingTag))
+        {
+            if (block.Tokens.Count is < 2)
+            {
+                var openingToken = block.Tokens.Peek()
+                    ?? throw new Exception("Start of block is a nested block/branch. This is most likely a bug.");
+
+                throw new Exception($"Empty block @ {openingToken.Filename}:{openingToken.Line}:{openingToken.Column}");
+            }
+            block.Tokens.Enqueue(token);
+            return block;
+        }
+        else if (token.Value is "?")
+        {
+            block.Tokens.Enqueue(token);
+            var missingBranch = "";
+            if (tokens.Peek().Value is "yes:" or "no:" && tokens.Count > 0)
+            {
+                missingBranch = tokens.Peek().Value is "yes:" ? "no:" : "yes:";
+                block.NestedBlocks.Enqueue(GroupBlock(tokens, ";"));
+            }
+            if (tokens.Peek().Value == missingBranch && tokens.Count > 0)
+            {
+                block.NestedBlocks.Enqueue(GroupBlock(tokens, ";"));
+            }
+        }
+        else if (token.Value is "while")
+        {
+            block.Tokens.Enqueue(token);
+            block.NestedBlocks.Enqueue(GroupBlock(tokens, ":"));
+            block.NestedBlocks.Enqueue(GroupBlock(tokens, ";"));
+        }
+        else
+        {
+            block.Tokens.Enqueue(token);
+        }
+    }
+    if (expectedClosingTag is not null)
+    {
+        var openingToken = block.Tokens.Peek()
+            ?? throw new Exception("Start of block is a nested block. This is most likely a bug.");
+        throw new Exception($"Unclosed block at @ {openingToken.Filename}:{openingToken.Line}:{openingToken.Column}");
+    }
+    return block;
+}
 
 static bool RunExternalCommand(string command, string arguments, bool printInfo = true)
 {
@@ -175,7 +233,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 ?? throw new Exception($"Operation was of type string but has no value. Probably a bug in the parser.");
 
             assembly.Add($";-- string --");
-            assembly.Add($"  mov rax, {text.Length - text.Count(c => c == '\\')}");
+            assembly.Add($"  mov rax, {text.Length - text.Count(c => c is '\\')}");
             assembly.Add($"  push rax");
             assembly.Add($"  push string_{stringLiterals.Count}");
 
@@ -406,372 +464,325 @@ static void GenerateAsembly(ParsedProgram program, string filename)
     File.WriteAllLines($"{filename.Split(".")[0]}.asm", assembly);
 }
 
-static ParsedProgram ParseProgram(Queue<Token> tokens)
+static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack)
 {
-    var program = new ParsedProgram(new List<Operation>());
-
+    var operations = new List<Operation>();
+    var tokens = block.Tokens;
     while (tokens.Count > 0)
     {
         var token = tokens.Dequeue();
         if (int.TryParse(token.Value, out var value))
         {
-            program.Operations.Add(new Operation(OperationType.PushNumber, token, new Meta(Number: value)));
+            operations.Add(new Operation(OperationType.PushNumber, token, new Meta(Number: value)));
+            typeStack.Push((DataType.Number, token));
         }
         else if (token.Value is "+")
         {
-            var nextToken = GetNextToken($"Expected number after +, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            if (!int.TryParse(nextToken.Value, out var operand))
-            {
-                throw new Exception($"Expected number after +, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
-            }
-
-            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.Add)));
+            ParseOperator(token, Operator.Add);
         }
         else if (token.Value is "-")
         {
-            var nextToken = GetNextToken($"Expected number after -, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            if (!int.TryParse(nextToken.Value, out var operand))
-            {
-                throw new Exception($"Expected number after -, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
-            }
-
-            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.Subtract)));
+            ParseOperator(token, Operator.Subtract);
         }
         else if (token.Value is "*")
         {
-            var nextToken = GetNextToken($"Expected number after *, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            if (!int.TryParse(nextToken.Value, out var operand))
-            {
-                throw new Exception($"Expected number after *, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
-            }
-
-            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.Multiply)));
+            ParseOperator(token, Operator.Multiply);
         }
         else if (token.Value is "/")
         {
-            var nextToken = GetNextToken($"Expected number after /, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            if (!int.TryParse(nextToken.Value, out var operand))
-            {
-                throw new Exception($"Expected number after /, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
-            }
-
-            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.Divide)));
+            ParseOperator(token, Operator.Divide);
         }
         else if (token.Value is "%")
         {
-            var nextToken = GetNextToken($"Expected number after %, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            if (!int.TryParse(nextToken.Value, out var operand))
-            {
-                throw new Exception($"Expected number after %, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
-            }
-
-            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.Modulo)));
+            ParseOperator(token, Operator.Modulo);
         }
         else if (token.Value is "=")
         {
-            var nextToken = GetNextToken($"Expected number after =, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            if (!int.TryParse(nextToken.Value, out var operand))
-            {
-                throw new Exception($"Expected number after =, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
-            }
-            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.Equal)));
+            ParseOperator(token, Operator.Equal);
         }
         else if (token.Value is "!=")
         {
-            var nextToken = GetNextToken($"Expected number after !=, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            if (!int.TryParse(nextToken.Value, out var operand))
-            {
-                throw new Exception($"Expected number after !=, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
-            }
-            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.NotEqual)));
+            ParseOperator(token, Operator.NotEqual);
         }
         else if (token.Value is "<")
         {
-            var nextToken = GetNextToken($"Expected number after <, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            if (!int.TryParse(nextToken.Value, out var operand))
-            {
-                throw new Exception($"Expected number after <, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
-            }
-            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.LessThan)));
+            ParseOperator(token, Operator.LessThan);
         }
         else if (token.Value is "<=")
         {
-            var nextToken = GetNextToken($"Expected number after <=, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            if (!int.TryParse(nextToken.Value, out var operand))
-            {
-                throw new Exception($"Expected number after <=, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
-            }
-            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.LessThanOrEqual)));
+            ParseOperator(token, Operator.LessThanOrEqual);
         }
         else if (token.Value is ">")
         {
-            var nextToken = GetNextToken($"Expected number after >, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            if (!int.TryParse(nextToken.Value, out var operand))
-            {
-                throw new Exception($"Expected number after >, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
-            }
-            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.GreaterThan)));
+            ParseOperator(token, Operator.GreaterThan);
         }
         else if (token.Value is ">=")
         {
-            var nextToken = GetNextToken($"Expected number after >=, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            if (!int.TryParse(nextToken.Value, out var operand))
-            {
-                throw new Exception($"Expected number after >=, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
-            }
-            program.Operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: Operator.GreaterThanOrEqual)));
+            ParseOperator(token, Operator.GreaterThanOrEqual);
         }
         else if (token.Value is "dup")
         {
-            program.Operations.Add(new Operation(OperationType.PushDuplicate, token));
+            if (typeStack.Count is 0)
+            {
+                throw new Exception($"`dup` expects a value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            operations.Add(new Operation(OperationType.PushDuplicate, token));
+            var (prevValue, _) = typeStack.Peek();
+            typeStack.Push((prevValue, token));
         }
         else if (token.Value is "drop")
         {
-            program.Operations.Add(new Operation(OperationType.Drop, token));
+            if (typeStack.Count is 0)
+            {
+                throw new Exception($"`drop` expects a value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            typeStack.Pop();
+            operations.Add(new Operation(OperationType.Drop, token));
         }
         else if (token.Value is "over")
         {
-            program.Operations.Add(new Operation(OperationType.Over, token));
+            if (typeStack.Count < 2)
+            {
+                throw new Exception($"`over` expects at least two values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var top = typeStack.Pop();
+            var (prev, _) = typeStack.Peek();
+            typeStack.Push(top);
+            typeStack.Push((prev, token));
+            operations.Add(new Operation(OperationType.Over, token));
         }
         else if (token.Value is "swap")
         {
-            program.Operations.Add(new Operation(OperationType.Swap, token));
+            if (typeStack.Count < 2)
+            {
+                throw new Exception($"`swap` expects at least two values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, _) = typeStack.Pop();
+            var (prev, _) = typeStack.Pop();
+            typeStack.Push((top, token));
+            typeStack.Push((prev, token));
+            operations.Add(new Operation(OperationType.Swap, token));
         }
         else if (token.Value is "print")
         {
-            program.Operations.Add(new Operation(OperationType.Print, token));
+            if (typeStack.Count is 0)
+            {
+                throw new Exception($"`print` expected value on stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            if (top is not DataType.Number)
+            {
+                throw new Exception($"`print` expected number on stack, but got `{top}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
+            }
+            operations.Add(new Operation(OperationType.Print, token));
         }
         else if (token.Value is "prints")
         {
-            program.Operations.Add(new Operation(OperationType.PrintString, token));
+            if (typeStack.Count < 2)
+            {
+                throw new Exception($"`prints` expected at least two values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            var (nextTop, nextTopToken) = typeStack.Pop();
+            if (top is not DataType.Pointer)
+            {
+                throw new Exception($"`prints` expected pointer on top of stack, but got `{top}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
+            }
+            if (nextTop is not DataType.Number)
+            {
+                throw new Exception($"`prints` expected number as second element ont the stack, but got `{nextTop}` @ {nextTopToken.Filename}:{nextTopToken.Line}:{nextTopToken.Column}");
+            }
+            operations.Add(new Operation(OperationType.PrintString, token));
         }
         else if (token.Value.StartsWith('"') && token.Value.EndsWith('"'))
         {
-            program.Operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: token.Value[1..^1])));
+            typeStack.Push((DataType.Number, token));
+            typeStack.Push((DataType.Pointer, token));
+            operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: token.Value[1..^1])));
         }
         else if (token.Value is "yes")
         {
-            program.Operations.Add(new Operation(OperationType.PushBool, token, new Meta(Bool: true)));
+            typeStack.Push((DataType.Number, token));
+            operations.Add(new Operation(OperationType.PushBool, token, new Meta(Bool: true)));
         }
         else if (token.Value is "no")
         {
-            program.Operations.Add(new Operation(OperationType.PushBool, token, new Meta(Bool: false)));
+            typeStack.Push((DataType.Number, token));
+            operations.Add(new Operation(OperationType.PushBool, token, new Meta(Bool: false)));
+        }
+        else if (token.Value is ":")
+        {
+            if (tokens.Count > 0)
+            {
+                throw new Exception($"Expected nothing after `:`, but got `{tokens.Peek().Value}` @ {tokens.Peek().Filename}:{tokens.Peek().Line}:{tokens.Peek().Column}");
+            }
+        }
+        else if (token.Value is ";")
+        {
+            if (tokens.Count > 0)
+            {
+                throw new Exception($"Expected nothing after `;`, but got `{tokens.Peek().Value}` @ {tokens.Peek().Filename}:{tokens.Peek().Line}:{tokens.Peek().Column}");
+            }
+        }
+        else if (token.Value is "yes:" or "no:")
+        {
+
         }
         else if (token.Value is "?")
         {
-            var nextToken = GetNextToken($"Expected `yes:` or `no:` after ?, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            if (nextToken.Value is not "yes:" and not "no:")
+            if (typeStack.Count is 0)
             {
-                throw new Exception($"Expected `yes:` or `no:` after ?, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+                throw new Exception($"`?` expects a value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            if (top is not DataType.Number)
+            {
+                throw new Exception($"`?` expects a number on the stack, but got `{top}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
             }
 
-            var yesBlockTokens = new Queue<Token>();
-            var noBlockTokens = new Queue<Token>();
-            var invalidBlockTokens = new List<string>
+            if (block.NestedBlocks.Count is 0)
             {
-                "yes:",
-                "no:",
-            };
-        other:
-            if (nextToken.Value is "yes:")
-            {
-                var yesToken = nextToken;
-                nextToken = GetNextToken($"Unclosed `yes:` block @ {yesToken.Filename}:{yesToken.Line}:{yesToken.Column}");
-                while (nextToken.Value is not ";")
-                {
-                    if (nextToken.Value is "?")
-                    {
-                        var block = GetIfBlockTokens(nextToken);
-                        foreach (var t in block)
-                        {
-                            yesBlockTokens.Enqueue(t);
-                        }
-                    }
-                    else if (invalidBlockTokens.Contains(nextToken.Value))
-                    {
-                        throw new Exception($"Unexpected `{nextToken.Value}` inside `yes:` block @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
-                    }
-                    else
-                    {
-                        yesBlockTokens.Enqueue(nextToken);
-                    }
-                    nextToken = GetNextToken($"Unclosed `yes:` block @ {yesToken.Filename}:{yesToken.Line}:{yesToken.Column}");
-                }
-
-                if (yesBlockTokens.Count == 0)
-                {
-                    throw new Exception($"Empty `yes:` block @ {yesToken.Filename}:{yesToken.Line}:{yesToken.Column}");
-                }
-
-                if (tokens.Count > 0)
-                {
-                    nextToken = tokens.Peek();
-                    if (nextToken.Value is "no:")
-                    {
-                        if (noBlockTokens.Count is not 0)
-                        {
-                            throw new Exception($"`no:` block is already defined for this `?` statement @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
-                        }
-                        nextToken = tokens.Dequeue();
-                        goto other;
-                    }
-                }
+                throw new Exception($"Expected at least one branch block after ?, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
             }
-            else
+            var branch1 = block.NestedBlocks.Dequeue();
+            var firstBranch1Token = branch1.Tokens.Peek()
+                ?? throw new Exception($"Expected yes: or no: after ?, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            if (firstBranch1Token.Value is not "yes:" and not "no:")
             {
-                var noToken = nextToken;
-                nextToken = GetNextToken($"Unclosed `no:` block @ {noToken.Filename}:{noToken.Line}:{noToken.Column}");
-                while (nextToken.Value is not ";")
-                {
-                    if (nextToken.Value is "?")
-                    {
-                        var block = GetIfBlockTokens(nextToken);
-                        foreach (var t in block)
-                        {
-                            noBlockTokens.Enqueue(t);
-                        }
-                    }
-                    else if (invalidBlockTokens.Contains(nextToken.Value))
-                    {
-                        throw new Exception($"Unexpected `{nextToken.Value}` inside `no:` block @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
-                    }
-                    else
-                    {
-                        noBlockTokens.Enqueue(nextToken);
-                    }
-                    nextToken = GetNextToken($"Unclosed `no:` block @ {noToken.Filename}:{noToken.Line}:{noToken.Column}");
-                }
-
-                if (noBlockTokens.Count == 0)
-                {
-                    throw new Exception($"Empty `no:` block @ {noToken.Filename}:{noToken.Line}:{noToken.Column}");
-                }
-
-                if (tokens.Count > 0)
-                {
-                    nextToken = tokens.Peek();
-                    if (nextToken.Value is "yes:")
-                    {
-                        if (yesBlockTokens.Count is not 0)
-                        {
-                            throw new Exception($"`yes:` block is already defined for this `?` statement @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
-                        }
-                        nextToken = tokens.Dequeue();
-                        goto other;
-                    }
-                }
+                throw new Exception($"Expected yes: or no: after ?, but got `{firstBranch1Token.Value}` @ {firstBranch1Token.Filename}:{firstBranch1Token.Line}:{firstBranch1Token.Column}");
             }
 
-            var noBlockProgram = ParseProgram(noBlockTokens);
-            var yesBlockProgram = ParseProgram(yesBlockTokens);
-            if (noBlockProgram.Operations.Count is 0)
+            var (branch1Program, branch1Stack) = ParseProgram(branch1, new(typeStack));
+
+            var endLabel = $"end_if_{token.Line}_{token.Column}";
+            if (block.NestedBlocks.Count is 0)
             {
-                var endLabel = $"end_{Guid.NewGuid().ToString().Replace("-", "")}";
-                program.Operations.Add(new Operation(OperationType.JumpIfZero, token, new Meta(Text: endLabel)));
-                program.Operations.AddRange(yesBlockProgram.Operations);
-                program.Operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
+                var (diffResult, stackDump) = typeStack.Diff(branch1Stack);
+                if (diffResult is not TypeStackDiff.Equal)
+                {
+                    throw new Exception($"Single branch `?` block must leave the stack unchanged, but it left it in a different state @ {token.Filename}:{token.Line}:{token.Column}\n{stackDump}");
+                }
+                operations.Add(new Operation(firstBranch1Token.Value is "yes:" ? OperationType.JumpIfZero : OperationType.JumpIfNotZero, token, new Meta(Text: endLabel)));
+                operations.AddRange(branch1Program.Operations);
+                operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
+                typeStack = branch1Stack;
+                continue;
             }
-            else if (yesBlockProgram.Operations.Count is 0)
+
+            var expectedBranch2Token = firstBranch1Token.Value is "yes:" ? "no:" : "yes:";
+            var branch2 = block.NestedBlocks.Peek();
+            var firstBranch2Token = branch2.Tokens.Peek();
+            if (firstBranch2Token?.Value != expectedBranch2Token)
             {
-                var endLabel = $"end_{Guid.NewGuid().ToString().Replace("-", "")}";
-                program.Operations.Add(new Operation(OperationType.JumpIfNotZero, token, new Meta(Text: endLabel)));
-                program.Operations.AddRange(noBlockProgram.Operations);
-                program.Operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
+                operations.Add(new Operation(firstBranch1Token.Value is "yes:" ? OperationType.JumpIfZero : OperationType.JumpIfNotZero, token, new Meta(Text: endLabel)));
+                operations.AddRange(branch1Program.Operations);
+                operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
+                typeStack = branch1Stack;
+                continue;
+            }
+            block.NestedBlocks.Dequeue();
+            var (branch2Program, branch2Stack) = ParseProgram(branch2, new(typeStack));
+            var (diff, msg) = branch1Stack.Diff(branch2Stack);
+            if (diff is TypeStackDiff.SizeDifference)
+            {
+                throw new Exception($"Branches starting at {firstBranch1Token.Filename}:{firstBranch1Token.Line}:{firstBranch1Token.Column} and {firstBranch2Token.Filename}:{firstBranch2Token.Line}:{firstBranch2Token.Column} have different stack sizes.");
+            }
+            else if (diff is TypeStackDiff.TypeDifference)
+            {
+                throw new Exception($"Branches starting at {firstBranch1Token.Filename}:{firstBranch1Token.Line}:{firstBranch1Token.Column} and {firstBranch2Token.Filename}:{firstBranch2Token.Line}:{firstBranch2Token.Column} have diverging stack types:\n{msg}");
+            }
+
+            typeStack = branch2Stack;
+
+            ParsedProgram yesBlock;
+            ParsedProgram noBlock;
+            Token yesToken;
+            Token noToken;
+            if (firstBranch1Token.Value is "yes:")
+            {
+                yesBlock = branch1Program;
+                noBlock = branch2Program;
+                yesToken = firstBranch1Token;
+                noToken = firstBranch2Token;
             }
             else
             {
-                var yesLabel = $"yes_{Guid.NewGuid().ToString().Replace("-", "")}";
-                var endLabel = $"end_{Guid.NewGuid().ToString().Replace("-", "")}";
-                program.Operations.Add(new Operation(OperationType.JumpIfNotZero, token, new Meta(Text: yesLabel)));
-                program.Operations.AddRange(noBlockProgram.Operations);
-                program.Operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: endLabel)));
-                program.Operations.Add(new Operation(OperationType.Label, token, new Meta(Text: yesLabel)));
-                program.Operations.AddRange(yesBlockProgram.Operations);
-                program.Operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
+                yesBlock = branch2Program;
+                noBlock = branch1Program;
+                yesToken = firstBranch2Token;
+                noToken = firstBranch1Token;
             }
+            var startYesBlockLabel = $"start_yes_branch_{yesToken.Line}_{yesToken.Column}";
+            operations.Add(new Operation(OperationType.JumpIfNotZero, token, new Meta(Text: startYesBlockLabel)));
+            operations.AddRange(noBlock.Operations);
+            operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: endLabel)));
+            operations.Add(new Operation(OperationType.Label, token, new Meta(Text: startYesBlockLabel)));
+            operations.AddRange(yesBlock.Operations);
+            operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
         }
         else if (token.Value is "while")
         {
-            var whileLabel = $"while_{Guid.NewGuid().ToString().Replace("-", "")}";
-            program.Operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileLabel)));
-
-            var conditionTokens = new Queue<Token>();
-            var nextToken = GetNextToken($"Missing `while` condition @ {token.Filename}:{token.Line}:{token.Column}");
-            while (nextToken.Value is not ":")
+            if (block.NestedBlocks.Count < 2)
             {
-                conditionTokens.Enqueue(nextToken);
-                nextToken = GetNextToken($"Missing `while` condition @ {token.Filename}:{token.Line}:{token.Column}");
+                throw new Exception($"Expected at least two blocks after while, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
             }
-            program.Operations.AddRange(ParseProgram(conditionTokens).Operations);
+            var conditionBlock = block.NestedBlocks.Dequeue();
+            var whileBlock = block.NestedBlocks.Dequeue();
 
-            var endLabel = $"end_{Guid.NewGuid().ToString().Replace("-", "")}";
-            program.Operations.Add(new Operation(OperationType.JumpIfZero, nextToken, new Meta(Text: endLabel)));
+            var whileStartLabel = $"while_{token.Line}_{token.Column}";
+            var whileEndLabel = $"end_while_{token.Line}_{token.Column}";
+            operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileStartLabel)));
 
-            var whileBlockTokens = new Queue<Token>();
-            nextToken = GetNextToken($"Unclosed `while` block @ {token.Filename}:{token.Line}:{token.Column}");
-            while (nextToken.Value is not ";")
+            var (conditionProgram, conditionStack) = ParseProgram(conditionBlock, new TypeStack(typeStack));
+            if ((conditionStack.Count - typeStack.Count) is not 1)
             {
-                if (nextToken.Value is "while")
-                {
-                    var blockTokens = GetWhileBlockTokens(nextToken);
-                    foreach (var t in blockTokens)
-                    {
-                        whileBlockTokens.Enqueue(t);
-                    }
-
-                }
-                else if (nextToken.Value is "?")
-                {
-                    var blockTokens = GetIfBlockTokens(nextToken);
-                    foreach (var t in blockTokens)
-                    {
-                        whileBlockTokens.Enqueue(t);
-                    }
-
-                }
-                else
-                {
-                    whileBlockTokens.Enqueue(nextToken);
-                }
-                nextToken = GetNextToken($"Unclosed `while` block @ {token.Filename}:{token.Line}:{token.Column}");
+                throw new Exception($"Expected condition to produce a single value, but got {conditionStack.Count - typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
             }
+            var (top, topToken) = conditionStack.Pop();
+            if (top is not DataType.Number)
+            {
+                throw new Exception($"Expected condition to be a bool, but got {top} from {topToken.Filename}:{topToken.Line}:{topToken.Column}");
+            }
+            operations.AddRange(conditionProgram.Operations);
+            operations.Add(new Operation(OperationType.JumpIfZero, token, new Meta(Text: whileEndLabel)));
 
-            program.Operations.AddRange(ParseProgram(whileBlockTokens).Operations);
-
-            program.Operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: whileLabel)));
-            program.Operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
+            var (whileProgram, whileStack) = ParseProgram(whileBlock, new TypeStack(conditionStack));
+            if (whileStack.Count != typeStack.Count)
+            {
+                throw new Exception($"Expected while block to produce 0 values, but got {whileStack.Count - typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            typeStack = whileStack;
+            operations.AddRange(whileProgram.Operations);
+            operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: whileStartLabel)));
+            operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileEndLabel)));
         }
         else
         {
             throw new Exception($"Unknown token `{token.Value}` @ {token.Filename}:{token.Line}:{token.Column}");
         }
     }
-    return program;
 
-    List<Token> GetWhileBlockTokens(Token whileToken)
+    return (new ParsedProgram(operations), typeStack);
+
+    void ParseOperator(Token token, Operator operatorType)
     {
-        var blockTokens = new List<Token> { whileToken };
-
-        var token = GetNextToken($"Unclosed `while` block @ {whileToken.Filename}:{whileToken.Line}:{whileToken.Column}");
-        while (token.Value is not ";")
+        if (typeStack.Count is 0)
         {
-            if (token.Value is "while")
-            {
-                blockTokens.AddRange(GetWhileBlockTokens(token));
-            }
-            else if (token.Value is "?")
-            {
-                blockTokens.AddRange(GetIfBlockTokens(token));
-            }
-            else
-            {
-                blockTokens.Add(token);
-            }
-            token = GetNextToken($"Unclosed `while` block @ {whileToken.Filename}:{whileToken.Line}:{whileToken.Column}");
+            throw new Exception($"`{token.Value}` expected number on stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
         }
-        blockTokens.Add(token);
+        var (type, _) = typeStack.Pop();
+        if (type is not DataType.Number)
+        {
+            throw new Exception($"`{token.Value}` expected number on stack, but got `{type}` @ {token.Filename}:{token.Line}:{token.Column}");
+        }
+        var nextToken = GetNextToken($"Expected number after `{token.Value}`, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+        if (!int.TryParse(nextToken.Value, out var operand))
+        {
+            throw new Exception($"Expected number after `{token.Value}`, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+        }
 
-        return blockTokens;
+        operations?.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: operatorType)));
+        typeStack.Push((DataType.Number, token));
     }
 
     Token GetNextToken(string failedMessage)
@@ -780,60 +791,8 @@ static ParsedProgram ParseProgram(Queue<Token> tokens)
         {
             throw new Exception(failedMessage);
         }
-        return tokens.Dequeue();
-    }
-
-    List<Token> GetIfBlockTokens(Token ifToken)
-    {
-        var blockTokens = new List<Token> { ifToken };
-
-        var token = GetNextToken($"Unclosed `if` block @ {ifToken.Filename}:{ifToken.Line}:{ifToken.Column}");
-        if (token.Value is not "yes:" and not "no:")
-        {
-            throw new Exception($"Expected `yes:` or `no:` @ {token.Filename}:{token.Line}:{token.Column}");
-        }
-        blockTokens.Add(token);
-        var firstBlockToken = token.Value;
-
-        blockTokens.AddRange(FindBranchBlockTokens());
-
-        if (tokens.Count is 0)
-        {
-            return blockTokens;
-        }
-
-        token = tokens.Peek();
-        if (token.Value is "yes:" or "no:" && token.Value != firstBlockToken)
-        {
-            blockTokens.Add(tokens.Dequeue());
-            blockTokens.AddRange(FindBranchBlockTokens());
-        }
-
-        return blockTokens;
-
-        List<Token> FindBranchBlockTokens()
-        {
-            var blockTokens = new List<Token>();
-            token = tokens.Dequeue();
-            while (token.Value is not ";")
-            {
-                if (token.Value is "?")
-                {
-                    blockTokens.AddRange(GetIfBlockTokens(token));
-                }
-                else
-                {
-                    blockTokens.Add(token);
-                }
-                if (tokens.Count is 0)
-                {
-                    throw new Exception($"Unclosed `?` block @ {token.Filename}:{token.Line}:{token.Column}");
-                }
-                token = tokens.Dequeue();
-            }
-            blockTokens.Add(token);
-            return blockTokens;
-        }
+        return tokens?.Dequeue()
+            ?? throw new Exception("Unexpected block start");
     }
 }
 
@@ -880,6 +839,12 @@ static Queue<Token> LexProgram(string filename)
     return words;
 }
 
+enum DataType
+{
+    Number,
+    Pointer,
+}
+
 record Token(string Filename, string Value, int Line, int Column);
 
 enum Operator
@@ -921,3 +886,42 @@ record Meta(int? Number = null, string? Text = null, Operator? Operator = null, 
 record Operation(OperationType Type, Token Token, Meta? Data = null);
 
 record ParsedProgram(List<Operation> Operations);
+
+record Block(Queue<Token> Tokens, Queue<Block> NestedBlocks);
+
+class TypeStack : Stack<(DataType, Token)>
+{
+    public TypeStack() : base() { }
+
+    // NOTE: To create a copy of a stack, we need to do it twice to get the elements back in order.
+    public TypeStack(IEnumerable<(DataType, Token)> collection) : base(new Stack<(DataType, Token)>(collection)) { }
+
+    internal (TypeStackDiff, string?) Diff(TypeStack other)
+    {
+        if (Count != other.Count)
+        {
+            return (TypeStackDiff.SizeDifference, null);
+        }
+        var stringBuilder = new StringBuilder();
+        var result = TypeStackDiff.Equal;
+        for (var i = 0; i < Count; i++)
+        {
+            var (type, token) = this.ElementAt(i);
+            var (otherType, otherToken) = other.ElementAt(i);
+            stringBuilder.AppendLine($"{i}: {type} ({token.Filename}:{token.Line}:{token.Column}) | {otherType} ({otherToken.Filename}:{otherToken.Line}:{otherToken.Column}))");
+            if (type != otherType)
+            {
+                result = TypeStackDiff.TypeDifference;
+            }
+        }
+        return (result, result is TypeStackDiff.Equal ? null : stringBuilder.ToString());
+    }
+}
+
+enum TypeStackDiff
+{
+    SizeDifference,
+    TypeDifference,
+    Equal,
+
+}
