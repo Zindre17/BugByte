@@ -25,7 +25,7 @@
 				},
 				{
 					"name": "keyword.operator.comparison.bugbyte",
-					"match": "(?<!\\S)(\\=|\\!\\=|\\<|\\<\\=|\\>|\\>\\=)(?!\\S)"
+					"match": "(?<!\\S)(\\=|\\=\\=|\\!\\=|\\<|\\<\\=|\\>|\\>\\=)(?!\\S)"
 				},
 				{
 					"name": "keyword.control.if.bugbyte",

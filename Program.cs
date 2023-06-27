@@ -282,6 +282,38 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             var op = operation.Data?.Operator
                 ?? throw new Exception($"Operation was of type operator but has no value. Probably a bug in the parser. @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
 
+            if (op is Operator.StringEqual)
+            {
+                assembly.Add(";-- string equal --");
+                assembly.Add($"  pop rcx");
+                assembly.Add($"  pop r8");
+                assembly.Add($"  pop rdx");
+                assembly.Add($"  pop r9");
+                assembly.Add($"  cmp r8, r9");
+                assembly.Add($"  jne .string_not_equal");
+                assembly.Add($"  cmp r8, 0");
+                assembly.Add($"  je .string_equal");
+                assembly.Add($".string_check_loop:");
+                assembly.Add($"  mov al, [rcx]");
+                assembly.Add($"  cmp al, [rdx]");
+                assembly.Add($"  jne .string_not_equal");
+                assembly.Add($"  dec r8");
+                assembly.Add($"  cmp r8, 0");
+                assembly.Add($"  je .string_equal");
+                assembly.Add($"  inc rcx");
+                assembly.Add($"  inc rdx");
+                assembly.Add($"  jmp .string_check_loop");
+                assembly.Add($".string_equal:");
+                assembly.Add($"  mov rax, 1");
+                assembly.Add($"  push rax");
+                assembly.Add($"  jmp .string_equal_end");
+                assembly.Add($".string_not_equal:");
+                assembly.Add($"  mov rax, 0");
+                assembly.Add($"  push rax");
+                assembly.Add($".string_equal_end:");
+                continue;
+            }
+
             var number = operation.Data.Number
                 ?? throw new Exception($"Operation was of type operator but has no value. Probably a bug in the parser. @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
 
@@ -500,6 +532,32 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack)
         {
             ParseOperator(token, Operator.Equal);
         }
+        else if (token.Value is "==")
+        {
+            if (typeStack.Count < 2)
+            {
+                throw new Exception($"`==` expects at least two elements on the stack, but got {typeStack.Count}.");
+            }
+            var (type1, _) = typeStack.Pop();
+            if (type1 is not DataType.Pointer)
+            {
+                throw new Exception($"`==` expects a pointer to a string on top of the stack, but got {type1}.");
+            }
+            var (type2, _) = typeStack.Pop();
+            if (type2 is not DataType.Number)
+            {
+                throw new Exception($"`==` expects a number as the second element on the stack, but got {type2}.");
+            }
+            var nextToken = GetNextToken($"Expected string literal after `==`, but got nothing.");
+            if (!IsString(nextToken, out var str))
+            {
+                throw new Exception($"Expected string literal after `==`, but got {nextToken}");
+            }
+
+            operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: str)));
+            operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: Operator.StringEqual)));
+            typeStack.Push((DataType.Number, token));
+        }
         else if (token.Value is "!=")
         {
             ParseOperator(token, Operator.NotEqual);
@@ -594,11 +652,11 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack)
             }
             operations.Add(new Operation(OperationType.PrintString, token));
         }
-        else if (token.Value.StartsWith('"') && token.Value.EndsWith('"'))
+        else if (IsString(token, out var str))
         {
             typeStack.Push((DataType.Number, token));
             typeStack.Push((DataType.Pointer, token));
-            operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: token.Value[1..^1])));
+            operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: str)));
         }
         else if (token.Value is "yes")
         {
@@ -764,6 +822,17 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack)
 
     return (new ParsedProgram(operations), typeStack);
 
+    bool IsString(Token token, out string value)
+    {
+        if (token.Value.StartsWith("\"") && token.Value.EndsWith("\""))
+        {
+            value = token.Value[1..^1];
+            return true;
+        }
+        value = "";
+        return false;
+    }
+
     void ParseOperator(Token token, Operator operatorType)
     {
         if (typeStack.Count is 0)
@@ -846,7 +915,10 @@ enum DataType
     Pointer,
 }
 
-record Token(string Filename, string Value, int Line, int Column);
+record Token(string Filename, string Value, int Line, int Column)
+{
+    public override string ToString() => $"`{Value}` @ {Filename}:{Line}:{Column}";
+};
 
 enum Operator
 {
@@ -862,6 +934,7 @@ enum Operator
     LessThanOrEqual,
     GreaterThan,
     GreaterThanOrEqual,
+    StringEqual,
 }
 
 enum OperationType
