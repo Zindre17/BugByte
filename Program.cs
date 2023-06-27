@@ -816,6 +816,7 @@ static Queue<Token> LexProgram(string filename)
                 }
                 var stringLiteral = remainingLine[..(endQuoteIndex + 1)];
                 words.Enqueue(new Token(filename, stringLiteral, lineNr, currentColumn));
+                currentColumn += stringLiteral.Length + 1;
                 remainingLine = remainingLine[(endQuoteIndex + 2)..].TrimStart();
             }
             else
