@@ -46,6 +46,10 @@
 				{
 					"name": "constant.numeric.bugbyte",
 					"match": "\\b(\\d+)\\b"
+				},
+				{
+					"name": "constant.other",
+					"match": "\\b(yes|no)(?!:)\\b"
 				}
 			]
 		},
