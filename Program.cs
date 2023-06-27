@@ -79,10 +79,18 @@ static Block GroupBlock(Queue<Token> tokens, string? expectedClosingTag = null)
         {
             block.Tokens.Enqueue(token);
             var missingBranch = "";
+            if (tokens.Count is 0)
+            {
+                throw new Exception($"Missing branch after {token}");
+            }
             if (tokens.Peek().Value is "yes:" or "no:" && tokens.Count > 0)
             {
                 missingBranch = tokens.Peek().Value is "yes:" ? "no:" : "yes:";
                 block.NestedBlocks.Enqueue(GroupBlock(tokens, ";"));
+            }
+            if (tokens.Count is 0)
+            {
+                continue;
             }
             if (tokens.Peek().Value == missingBranch && tokens.Count > 0)
             {
