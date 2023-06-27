@@ -884,6 +884,7 @@ static Queue<Token> LexProgram(string filename)
         var currentColumn = line.Length - remainingLine.Length + 1; // index starts at 1
         while (remainingLine.Length > 0)
         {
+            string word;
             if (remainingLine.StartsWith('"'))
             {
                 var endQuoteIndex = remainingLine.IndexOf('"', 1);
@@ -891,25 +892,47 @@ static Queue<Token> LexProgram(string filename)
                 {
                     throw new Exception($"Missing end quote for string literal `{remainingLine}` @ {filename}:{lineNr}:{currentColumn}");
                 }
-                var stringLiteral = remainingLine[..(endQuoteIndex + 1)];
-                words.Enqueue(new Token(filename, stringLiteral, lineNr, currentColumn));
-                currentColumn += stringLiteral.Length + 1;
-                remainingLine = remainingLine[(endQuoteIndex + 2)..].TrimStart();
+                word = remainingLine[..(endQuoteIndex + 1)];
             }
             else
             {
                 var split = remainingLine.Split(' ', 2);
-                words.Enqueue(new Token(filename, split[0], lineNr, currentColumn));
-                if (split.Length > 1)
-                {
-                    currentColumn += split[0].Length + 1; // +1 for the space
-                    remainingLine = split[1].TrimStart();
-                    currentColumn += split[1].Length - remainingLine.Length;
-                }
-                else
-                {
-                    remainingLine = "";
-                }
+                word = split[0];
+            }
+
+            if (word.Length > 4 && word.StartsWith("yes:"))
+            {
+                words.Enqueue(new Token(filename, word[..4], lineNr, currentColumn));
+                word = word[4..];
+                currentColumn += 4;
+                remainingLine = remainingLine[4..];
+            }
+            else if (word.Length > 3 && word.StartsWith("no:"))
+            {
+                words.Enqueue(new Token(filename, word[..3], lineNr, currentColumn));
+                word = word[3..];
+                currentColumn += 3;
+                remainingLine = remainingLine[3..];
+            }
+
+            if (word.Length > 1 && (word.EndsWith(";") || word.EndsWith("?")))
+            {
+                words.Enqueue(new Token(filename, word[..^1], lineNr, currentColumn));
+                words.Enqueue(new Token(filename, word[^1..], lineNr, currentColumn + word.Length - 1));
+            }
+            else
+            {
+                words.Enqueue(new Token(filename, word, lineNr, currentColumn));
+            }
+
+            if (remainingLine.Length > word.Length)
+            {
+                remainingLine = remainingLine[word.Length..].TrimStart();
+                currentColumn = line.Length - remainingLine.Length + 1;
+            }
+            else
+            {
+                remainingLine = "";
             }
         }
         lineNr++;

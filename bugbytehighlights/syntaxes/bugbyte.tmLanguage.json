@@ -29,11 +29,11 @@
 				},
 				{
 					"name": "keyword.control.if.bugbyte",
-					"match": "(?<!\\S)(\\?)(?!\\S)"
+					"match": "(\\?)(?!\\S)"
 				},
 				{
 					"name": "keyword.control.if.branches.bugbyte",
-					"match": "\\b(yes|no)\\:(?!\\S)"
+					"match": "\\b(yes|no)\\:"
 				}
 			]
 		},
