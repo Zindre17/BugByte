@@ -18,7 +18,7 @@ var words = LexProgram(fileName);
 
 try
 {
-    var startBlock = GroupBlock(words);
+    var startBlock = GroupBlock(null, words);
     var (program, typeStack) = ParseProgram(startBlock, new());
     if (typeStack.Count > 0)
     {
@@ -32,7 +32,7 @@ catch (Exception e)
     Console.Error.WriteLine(e.Message);
     Console.Error.WriteLine("Failed to compile.");
     Console.ResetColor();
-    Environment.Exit(1);
+    throw;
 }
 
 Console.WriteLine("Compiled successfully.");
@@ -57,20 +57,25 @@ if (!RunExternalCommand("chmod", $"+x {fileNameWithoutExtension}"))
 
 RunExternalCommand($"./{fileNameWithoutExtension}", "", false);
 
-static Block GroupBlock(Queue<Token> tokens, string? expectedClosingTag = null)
+static Block GroupBlock(Token? last, Queue<Token> tokens, string? expectedClosingTag = null)
 {
     var block = new Block(new(), new());
+    if (tokens.Count is 0)
+    {
+        if (last is null)
+        {
+            throw new Exception("Empty program.");
+        }
+        throw new Exception($"Empty block after {last}.");
+    }
     while (tokens.Count > 0)
     {
         var token = tokens.Dequeue();
         if (expectedClosingTag is not null && (token.Value == expectedClosingTag))
         {
-            if (block.Tokens.Count is < 2)
+            if (block.Tokens.Count is 0)
             {
-                var openingToken = block.Tokens.Peek()
-                    ?? throw new Exception("Start of block is a nested block/branch. This is most likely a bug.");
-
-                throw new Exception($"Empty block @ {openingToken.Filename}:{openingToken.Line}:{openingToken.Column}");
+                throw new Exception($"Empty block after {last}");
             }
             block.Tokens.Enqueue(token);
             return block;
@@ -86,7 +91,7 @@ static Block GroupBlock(Queue<Token> tokens, string? expectedClosingTag = null)
             if (tokens.Peek().Value is "yes:" or "no:" && tokens.Count > 0)
             {
                 missingBranch = tokens.Peek().Value is "yes:" ? "no:" : "yes:";
-                block.NestedBlocks.Enqueue(GroupBlock(tokens, ";"));
+                block.NestedBlocks.Enqueue(GroupBlock(token, tokens, ";"));
             }
             if (tokens.Count is 0)
             {
@@ -94,14 +99,20 @@ static Block GroupBlock(Queue<Token> tokens, string? expectedClosingTag = null)
             }
             if (tokens.Peek().Value == missingBranch && tokens.Count > 0)
             {
-                block.NestedBlocks.Enqueue(GroupBlock(tokens, ";"));
+                block.NestedBlocks.Enqueue(GroupBlock(token, tokens, ";"));
             }
         }
         else if (token.Value is "while")
         {
             block.Tokens.Enqueue(token);
-            block.NestedBlocks.Enqueue(GroupBlock(tokens, ":"));
-            block.NestedBlocks.Enqueue(GroupBlock(tokens, ";"));
+            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, ":"));
+            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, ";"));
+        }
+        else if (token.Value is "using")
+        {
+            block.Tokens.Enqueue(token);
+            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, ":"));
+            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, ";"));
         }
         else
         {
@@ -110,8 +121,7 @@ static Block GroupBlock(Queue<Token> tokens, string? expectedClosingTag = null)
     }
     if (expectedClosingTag is not null)
     {
-        var openingToken = block.Tokens.Peek()
-            ?? throw new Exception("Start of block is a nested block. This is most likely a bug.");
+        var openingToken = block.Tokens.Peek();
         throw new Exception($"Unclosed block at @ {openingToken.Filename}:{openingToken.Line}:{openingToken.Column}");
     }
     return block;
@@ -179,6 +189,7 @@ static bool RunExternalCommand(string command, string arguments, bool printInfo 
 
 static void GenerateAsembly(ParsedProgram program, string filename)
 {
+    var pinnedStackItems = new List<string>();
     var assembly = new List<string>
     {
         "format ELF64 executable 3",
@@ -478,6 +489,44 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             assembly.Add(";-- jump --");
             assembly.Add($"  jmp {label}");
         }
+        else if (operation.Type is OperationType.PinStackElement)
+        {
+            var label = operation.Data?.Text
+                ?? throw new Exception("Pin-stack-element-keyword has no name. Probably a bug in the parser.");
+            var index = pinnedStackItems.Count;
+            pinnedStackItems.Add(label);
+            assembly.Add(";-- pin stack element --");
+            var register = index switch
+            {
+                0 => "r12",
+                1 => "r13",
+                2 => "r14",
+                3 => "r15",
+                _ => throw new Exception("Too many pinned stack items. Only 4 are supported."),
+            };
+            assembly.Add($"  pop {register}");
+        }
+        else if (operation.Type is OperationType.PushPinnedStackItem)
+        {
+            var label = operation.Data?.Text
+                ?? throw new Exception("Push-pinned-stack-item-keyword has no name. Probably a bug in the parser.");
+
+            var index = pinnedStackItems.IndexOf(label);
+            if (index == -1)
+            {
+                throw new Exception($"Unknown pinned stack item `{label}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
+            }
+            assembly.Add(";-- push pinned stack item --");
+            var register = index switch
+            {
+                0 => "r12",
+                1 => "r13",
+                2 => "r14",
+                3 => "r15",
+                _ => throw new Exception("Too many pinned stack items. Only 4 are supported."),
+            };
+            assembly.Add($"  push {register}");
+        }
         else
         {
             throw new Exception($"Unknown operation `{operation.Type}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
@@ -504,14 +553,44 @@ static void GenerateAsembly(ParsedProgram program, string filename)
     File.WriteAllLines($"{filename.Split(".")[0]}.asm", assembly);
 }
 
-static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack)
+static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack, Dictionary<string, DataType>? pinnedStackItems = null)
 {
+    var keywords = new string[]
+    {
+        "dup",
+        "swap",
+        "drop",
+        "over",
+        "?",
+        "no:",
+        "yes:",
+        "while",
+        "+",
+        "-",
+        "*",
+        "/",
+        "%",
+        "<",
+        "<=",
+        ">",
+        ">=",
+        "print",
+        "prints",
+        "=",
+        "!=",
+        "==",
+    };
     var operations = new List<Operation>();
     var tokens = block.Tokens;
     while (tokens.Count > 0)
     {
         var token = tokens.Dequeue();
-        if (int.TryParse(token.Value, out var value))
+        if (pinnedStackItems is not null && pinnedStackItems.TryGetValue(token.Value, out var type))
+        {
+            operations.Add(new Operation(OperationType.PushPinnedStackItem, token, new Meta(Text: token.Value)));
+            typeStack.Push((type, token));
+        }
+        else if (int.TryParse(token.Value, out var value))
         {
             operations.Add(new Operation(OperationType.PushNumber, token, new Meta(Number: value)));
             typeStack.Push((DataType.Number, token));
@@ -822,9 +901,52 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack)
             operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: whileStartLabel)));
             operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileEndLabel)));
         }
+        else if (token.Value is "using")
+        {
+            if (block.NestedBlocks.Count < 2)
+            {
+                throw new Exception($"Expected at least two blocks after using, but got {block.NestedBlocks.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var assignmentBlock = block.NestedBlocks.Dequeue();
+            if (assignmentBlock.Tokens.Count is 0)
+            {
+                throw new Exception($"Expected at least one assignment, but got none @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var assignments = new List<Token>();
+            while (assignmentBlock.Tokens.Count > 0)
+            {
+                var assignment = assignmentBlock.Tokens.Dequeue();
+                if (assignment.Value is ":")
+                {
+                    break;
+                }
+                if (keywords.Contains(assignment.Value))
+                {
+                    throw new Exception($"Expected identifier, but got an existing keyword {token}.");
+                }
+                assignments.Add(assignment);
+            }
+            if (assignments.Count is 0)
+            {
+                throw new Exception($"Expected at least one assignment, but got none @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+
+            pinnedStackItems ??= new Dictionary<string, DataType>();
+            for (var i = assignments.Count - 1; i >= 0; i--)
+            {
+                pinnedStackItems.Add(assignments[i].Value, typeStack.Pop().Item1);
+                operations.Add(new Operation(OperationType.PinStackElement, assignments[i], new Meta(Text: assignments[i].Value)));
+            }
+
+            var consumingBlock = block.NestedBlocks.Dequeue();
+
+            var (consumingProgram, consumingStack) = ParseProgram(consumingBlock, new TypeStack(typeStack), pinnedStackItems);
+            operations.AddRange(consumingProgram.Operations);
+            typeStack = consumingStack;
+        }
         else
         {
-            throw new Exception($"Unknown token `{token.Value}` @ {token.Filename}:{token.Line}:{token.Column}");
+            throw new Exception($"Unknown token {token}");
         }
     }
 
@@ -983,7 +1105,10 @@ enum OperationType
     PushString,
     PushBool,
     PushDuplicate,
+    PushPinnedStackItem,
     Operator,
+    UsingBlock,
+    PinStackElement,
 }
 
 record Meta(int? Number = null, string? Text = null, Operator? Operator = null, bool? Bool = null);
@@ -1030,3 +1155,5 @@ enum TypeStackDiff
     Equal,
 
 }
+
+record PinnedStackItem(Token Token, DataType Type);
