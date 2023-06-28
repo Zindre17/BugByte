@@ -915,7 +915,7 @@ static Queue<Token> LexProgram(string filename)
                 remainingLine = remainingLine[3..];
             }
 
-            if (word.Length > 1 && (word.EndsWith(";") || word.EndsWith("?")))
+            if (word.Length > 1 && (word.EndsWith(";") || word.EndsWith("?") || (word.EndsWith(":") && !word.StartsWith("yes:") && !word.StartsWith("no:"))))
             {
                 words.Enqueue(new Token(filename, word[..^1], lineNr, currentColumn));
                 words.Enqueue(new Token(filename, word[^1..], lineNr, currentColumn + word.Length - 1));
