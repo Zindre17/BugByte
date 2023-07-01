@@ -463,6 +463,40 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             assembly.Add("  mov rax, 1");
             assembly.Add("  syscall");
         }
+        else if (operation.Type is OperationType.Syscall)
+        {
+            var version = operation.Data?.Number
+                ?? throw new Exception("Syscall has no version. Probably a bug in the parser.");
+
+            assembly.Add($";-- syscall {version} --");
+            assembly.Add("  pop rax");
+            if (version > 0)
+            {
+                assembly.Add("  pop rdi");
+            }
+            if (version > 1)
+            {
+                assembly.Add("  pop rsi");
+            }
+            if (version > 2)
+            {
+                assembly.Add("  pop rdx");
+            }
+            if (version > 3)
+            {
+                assembly.Add("  pop r10");
+            }
+            if (version > 4)
+            {
+                assembly.Add("  pop r8");
+            }
+            if (version > 5)
+            {
+                assembly.Add("  pop r9");
+            }
+            assembly.Add("  syscall");
+            assembly.Add("  push rax");
+        }
         else if (operation.Type is OperationType.JumpIfZero)
         {
             var endLabel = operation.Data?.Text
@@ -744,6 +778,125 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
                 throw new Exception($"`prints` expected number as second element ont the stack, but got `{nextTop}` @ {nextTopToken.Filename}:{nextTopToken.Line}:{nextTopToken.Column}");
             }
             operations.Add(new Operation(OperationType.PrintString, token));
+        }
+        else if (token.Value is "syscall0")
+        {
+            if (typeStack.Count is 0)
+            {
+                throw new Exception($"`syscall0` expects at least one value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            if (top is not DataType.Number)
+            {
+                throw new Exception($"`syscall0` expects number on top of stack, but got `{top}` from {topToken}.");
+            }
+            operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 0)));
+            typeStack.Push((DataType.Number, token));
+        }
+        else if (token.Value is "syscall1")
+        {
+            if (typeStack.Count < 2)
+            {
+                throw new Exception($"`syscall1` expects at least two values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            if (top is not DataType.Number)
+            {
+                throw new Exception($"`syscall1` expects number on top of stack, but got `{top}` from {topToken}.");
+            }
+            typeStack.Pop();
+            operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 1)));
+            typeStack.Push((DataType.Number, token));
+        }
+        else if (token.Value is "syscall2")
+        {
+            if (typeStack.Count < 3)
+            {
+                throw new Exception($"`syscall2` expects at least three values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            if (top is not DataType.Number)
+            {
+                throw new Exception($"`syscall2` expects number on top of stack, but got `{top}` from {topToken}.");
+            }
+            typeStack.Pop();
+            typeStack.Pop();
+            operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 2)));
+            typeStack.Push((DataType.Number, token));
+        }
+        else if (token.Value is "syscall3")
+        {
+            if (typeStack.Count < 4)
+            {
+                throw new Exception($"`syscall3` expects at least four values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            if (top is not DataType.Number)
+            {
+                throw new Exception($"`syscall3` expects number on top of stack, but got `{top}` from {topToken}.");
+            }
+            typeStack.Pop();
+            typeStack.Pop();
+            typeStack.Pop();
+            operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 3)));
+            typeStack.Push((DataType.Number, token));
+        }
+        else if (token.Value is "syscall4")
+        {
+            if (typeStack.Count < 5)
+            {
+                throw new Exception($"`syscall4` expects at least four values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            if (top is not DataType.Number)
+            {
+                throw new Exception($"`syscall4` expects number on top of stack, but got `{top}` from {topToken}.");
+            }
+            typeStack.Pop();
+            typeStack.Pop();
+            typeStack.Pop();
+            typeStack.Pop();
+            operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 4)));
+            typeStack.Push((DataType.Number, token));
+        }
+        else if (token.Value is "syscall5")
+        {
+            if (typeStack.Count < 6)
+            {
+                throw new Exception($"`syscall5` expects at least four values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            if (top is not DataType.Number)
+            {
+                throw new Exception($"`syscall5` expects number on top of stack, but got `{top}` from {topToken}.");
+            }
+            typeStack.Pop();
+            typeStack.Pop();
+            typeStack.Pop();
+            typeStack.Pop();
+            typeStack.Pop();
+            operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 5)));
+            typeStack.Push((DataType.Number, token));
+        }
+        else if (token.Value is "syscall6")
+        {
+            if (typeStack.Count < 7)
+            {
+                throw new Exception($"`syscall6` expects at least four values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            if (top is not DataType.Number)
+            {
+                throw new Exception($"`syscall6` expects number on top of stack, but got `{top}` from {topToken}.");
+            }
+            typeStack.Pop();
+            typeStack.Pop();
+            typeStack.Pop();
+            typeStack.Pop();
+            typeStack.Pop();
+            typeStack.Pop();
+            operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 6)));
+            typeStack.Push((DataType.Number, token));
         }
         else if (IsString(token, out var str))
         {
@@ -1133,6 +1286,7 @@ enum OperationType
     UsingBlock,
     PinStackElement,
     UnpinStackElement,
+    Syscall,
 }
 
 record Meta(int? Number = null, string? Text = null, Operator? Operator = null, bool? Bool = null);

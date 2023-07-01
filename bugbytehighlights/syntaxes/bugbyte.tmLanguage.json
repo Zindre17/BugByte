@@ -38,6 +38,10 @@
 				{
 					"name": "keyword.control.using.bugbyte",
 					"match": "\\b(using)\\b"
+				},
+				{
+					"name": "keyword.control.syscall.bugbyte",
+					"match": "\\b(syscall[0-6])\\b"
 				}
 			]
 		},
