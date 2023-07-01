@@ -584,6 +584,7 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
         "=",
         "!=",
         "==",
+        "using",
     };
     var operations = new List<Operation>();
     var tokens = block.Tokens;
