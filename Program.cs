@@ -983,15 +983,23 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
         {
             throw new Exception($"`{token.Value}` expected number on stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
         }
-        var (type, _) = typeStack.Pop();
-        if (type is not DataType.Number)
-        {
-            throw new Exception($"`{token.Value}` expected number on stack, but got `{type}` @ {token.Filename}:{token.Line}:{token.Column}");
-        }
+
         var nextToken = GetNextToken($"Expected number after `{token.Value}`, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
         if (!int.TryParse(nextToken.Value, out var operand))
         {
             throw new Exception($"Expected number after `{token.Value}`, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+        }
+
+        var (type, _) = typeStack.Pop();
+        if (type is not DataType.Number)
+        {
+            if (operatorType is Operator.Add or Operator.Subtract && type is DataType.Pointer)
+            {
+                operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: operatorType)));
+                typeStack.Push((type, token));
+                return;
+            }
+            throw new Exception($"`{token.Value}` expected number on stack, but got `{type}` @ {token.Filename}:{token.Line}:{token.Column}");
         }
 
         operations?.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: operatorType)));
