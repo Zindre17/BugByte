@@ -720,9 +720,9 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
                 throw new Exception($"`print` expected value on stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
             }
             var (top, topToken) = typeStack.Pop();
-            if (top is not DataType.Number)
+            if (top is not DataType.Number and not DataType.Pointer)
             {
-                throw new Exception($"`print` expected number on stack, but got `{top}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
+                throw new Exception($"`print` expected number or pointer on stack, but got `{top}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
             }
             operations.Add(new Operation(OperationType.Print, token));
         }
