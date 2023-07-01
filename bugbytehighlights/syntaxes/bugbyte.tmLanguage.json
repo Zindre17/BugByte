@@ -34,6 +34,10 @@
 				{
 					"name": "keyword.control.if.branches.bugbyte",
 					"match": "\\b(yes|no)\\:"
+				},
+				{
+					"name": "keyword.control.using.bugbyte",
+					"match": "\\b(using)\\b"
 				}
 			]
 		},
