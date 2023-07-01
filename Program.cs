@@ -189,6 +189,8 @@ static bool RunExternalCommand(string command, string arguments, bool printInfo 
 
 static void GenerateAsembly(ParsedProgram program, string filename)
 {
+    const int TempStackCapacity = 100;
+
     var pinnedStackItems = new List<string>();
     var assembly = new List<string>
     {
@@ -231,7 +233,10 @@ static void GenerateAsembly(ParsedProgram program, string filename)
         "  add     rsp, 40"                  ,
         "  ret"                              ,
 
-        "start:"
+        "start:",
+        ";-- setup temp stack pointers --",
+        "  mov r15, temp_stack; top of stack",
+        "  mov r14, temp_stack; bottom of stack",
     };
 
     var stringLiterals = new List<string>();
@@ -494,17 +499,15 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             var label = operation.Data?.Text
                 ?? throw new Exception("Pin-stack-element-keyword has no name. Probably a bug in the parser.");
             var index = pinnedStackItems.Count;
+            if (index is TempStackCapacity)
+            {
+                throw new Exception($"Too many pinned stack items. Max is {TempStackCapacity}.");
+            }
             pinnedStackItems.Add(label);
             assembly.Add(";-- pin stack element --");
-            var register = index switch
-            {
-                0 => "r12",
-                1 => "r13",
-                2 => "r14",
-                3 => "r15",
-                _ => throw new Exception("Too many pinned stack items. Only 4 are supported."),
-            };
-            assembly.Add($"  pop {register}");
+            assembly.Add($"  pop rax");
+            assembly.Add($"  mov [r15], rax");
+            assembly.Add($"  add r15, 8");
         }
         else if (operation.Type is OperationType.PushPinnedStackItem)
         {
@@ -517,15 +520,14 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 throw new Exception($"Unknown pinned stack item `{label}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
             }
             assembly.Add(";-- push pinned stack item --");
-            var register = index switch
-            {
-                0 => "r12",
-                1 => "r13",
-                2 => "r14",
-                3 => "r15",
-                _ => throw new Exception("Too many pinned stack items. Only 4 are supported."),
-            };
-            assembly.Add($"  push {register}");
+            assembly.Add($"  mov rax, [r14 + {index * 8}]");
+            assembly.Add($"  push rax");
+        }
+        else if (operation.Type is OperationType.UnpinStackElement)
+        {
+            pinnedStackItems.RemoveAt(pinnedStackItems.Count - 1);
+            assembly.Add(";-- unpin stack element --");
+            assembly.Add($"  sub r15, 8");
         }
         else
         {
@@ -550,10 +552,13 @@ static void GenerateAsembly(ParsedProgram program, string filename)
         assembly.Add($"string_{i}: db \"{stringLiteral}\"");
     }
 
+    assembly.Add("segment readable writeable");
+    assembly.Add($"temp_stack: rq {TempStackCapacity}");
+
     File.WriteAllLines($"{filename.Split(".")[0]}.asm", assembly);
 }
 
-static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack, Dictionary<string, DataType>? pinnedStackItems = null)
+static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack, Dictionary<string, (DataType, Token)>? pinnedStackItems = null)
 {
     var keywords = new string[]
     {
@@ -585,10 +590,10 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
     while (tokens.Count > 0)
     {
         var token = tokens.Dequeue();
-        if (pinnedStackItems is not null && pinnedStackItems.TryGetValue(token.Value, out var type))
+        if (pinnedStackItems is not null && pinnedStackItems.TryGetValue(token.Value, out var tuple))
         {
             operations.Add(new Operation(OperationType.PushPinnedStackItem, token, new Meta(Text: token.Value)));
-            typeStack.Push((type, token));
+            typeStack.Push((tuple.Item1, token));
         }
         else if (int.TryParse(token.Value, out var value))
         {
@@ -931,10 +936,14 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
                 throw new Exception($"Expected at least one assignment, but got none @ {token.Filename}:{token.Line}:{token.Column}");
             }
 
-            pinnedStackItems ??= new Dictionary<string, DataType>();
+            pinnedStackItems ??= new Dictionary<string, (DataType, Token)>();
             for (var i = assignments.Count - 1; i >= 0; i--)
             {
-                pinnedStackItems.Add(assignments[i].Value, typeStack.Pop().Item1);
+                if (!pinnedStackItems.TryAdd(assignments[i].Value, (typeStack.Pop().Item1, assignments[i])))
+                {
+                    var (_, existing) = pinnedStackItems[assignments[i].Value];
+                    throw new Exception($"Cannot pin {assignments[i]} because it is already pinned @ {existing.Filename}:{existing.Line}:{existing.Column}");
+                };
                 operations.Add(new Operation(OperationType.PinStackElement, assignments[i], new Meta(Text: assignments[i].Value)));
             }
 
@@ -942,6 +951,11 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
 
             var (consumingProgram, consumingStack) = ParseProgram(consumingBlock, new TypeStack(typeStack), pinnedStackItems);
             operations.AddRange(consumingProgram.Operations);
+            foreach (var assignment in assignments)
+            {
+                operations.Add(new Operation(OperationType.UnpinStackElement, assignment));
+                pinnedStackItems.Remove(assignment.Value);
+            }
             typeStack = consumingStack;
         }
         else
@@ -1109,6 +1123,7 @@ enum OperationType
     Operator,
     UsingBlock,
     PinStackElement,
+    UnpinStackElement,
 }
 
 record Meta(int? Number = null, string? Text = null, Operator? Operator = null, bool? Bool = null);
