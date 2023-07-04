@@ -192,6 +192,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
     const int TempStackCapacity = 100;
 
     var pinnedStackItems = new List<string>();
+    var memories = new List<(string, int)>();
     var assembly = new List<string>
     {
         "format ELF64 executable 3",
@@ -463,6 +464,37 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             assembly.Add("  mov rax, 1");
             assembly.Add("  syscall");
         }
+        else if (operation.Type is OperationType.AllocateMemory)
+        {
+            var size = operation.Data?.Number
+                ?? throw new Exception("AllocateMemory has no size. Probably a bug in the parser.");
+            var name = operation.Data?.Text
+                ?? throw new Exception("AllocateMemory has no name. Probably a bug in the parser.");
+
+            memories.Add((name, size));
+        }
+        else if (operation.Type is OperationType.PushMemory)
+        {
+            var name = operation.Data?.Text
+                ?? throw new Exception("PushMemory has no name. Probably a bug in the parser.");
+            assembly.Add($";-- push memory {name} --");
+            assembly.Add($"  mov rax, {name}");
+            assembly.Add($"  push rax");
+        }
+        else if (operation.Type is OperationType.StoreMemory)
+        {
+            assembly.Add(";-- store memory --");
+            assembly.Add("  pop rax");
+            assembly.Add("  pop rbx");
+            assembly.Add("  mov [rbx], rax");
+        }
+        else if (operation.Type is OperationType.LoadMemory)
+        {
+            assembly.Add($";-- load memory --");
+            assembly.Add($"  pop rax");
+            assembly.Add($"  mov rax, [rax]");
+            assembly.Add($"  push rax");
+        }
         else if (operation.Type is OperationType.Syscall)
         {
             var version = operation.Data?.Number
@@ -588,6 +620,10 @@ static void GenerateAsembly(ParsedProgram program, string filename)
 
     assembly.Add("segment readable writeable");
     assembly.Add($"temp_stack: rq {TempStackCapacity}");
+    foreach (var (name, size) in memories)
+    {
+        assembly.Add($"{name}: rb {size}");
+    }
 
     File.WriteAllLines($"{filename.Split(".")[0]}.asm", assembly);
 }
@@ -621,6 +657,7 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
         "using",
     };
     var operations = new List<Operation>();
+    var memories = new Dictionary<string, Token>();
     var tokens = block.Tokens;
     while (tokens.Count > 0)
     {
@@ -629,6 +666,11 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
         {
             operations.Add(new Operation(OperationType.PushPinnedStackItem, token, new Meta(Text: token.Value)));
             typeStack.Push((tuple.Item1, token));
+        }
+        else if (memories.ContainsKey(token.Value))
+        {
+            operations.Add(new Operation(OperationType.PushMemory, token, new Meta(Text: token.Value)));
+            typeStack.Push((DataType.Pointer, token));
         }
         else if (int.TryParse(token.Value, out var value))
         {
@@ -778,6 +820,59 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
                 throw new Exception($"`prints` expected number as second element ont the stack, but got `{nextTop}` @ {nextTopToken.Filename}:{nextTopToken.Line}:{nextTopToken.Column}");
             }
             operations.Add(new Operation(OperationType.PrintString, token));
+        }
+        else if (token.Value is "alloc[")
+        {
+            var nextToken = GetNextToken($"Expected number after `alloc[`, but got nothing.");
+            if (!int.TryParse(nextToken.Value, out var number))
+            {
+                throw new Exception($"Expected a number after `alloc[` but got {token}");
+            }
+            var endToken = GetNextToken($"Expected `]` after `alloc[` but got nothing.");
+            if (endToken.Value is not "]")
+            {
+                throw new Exception($"Unclosed `alloc[` @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+
+            var name = GetNextToken($"Expected name after `alloc[{number}]` but got nothing.");
+            if (keywords.Contains(name.Value))
+            {
+                throw new Exception($"`{name.Value}` is a keyword and cannot be used as a memory name @ {name.Filename}:{name.Line}:{name.Column}");
+            }
+            if (!memories.TryAdd(name.Value, name))
+            {
+                throw new Exception($"`{name.Value}` is already allocated at {memories[name.Value]}");
+            }
+
+            operations.Add(new Operation(OperationType.AllocateMemory, token, new Meta(Number: number, Text: name.Value)));
+        }
+        else if (token.Value is "store")
+        {
+            if (typeStack.Count < 2)
+            {
+                throw new Exception($"`store` expects at least two values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            var (nextTop, nextTopToken) = typeStack.Pop();
+            if (nextTop is not DataType.Pointer)
+            {
+                throw new Exception($"`store` expects a pointer as second element ont the stack, but got `{nextTop}` @ {nextTopToken.Filename}:{nextTopToken.Line}:{nextTopToken.Column}");
+            }
+            operations.Add(new Operation(OperationType.StoreMemory, token));
+        }
+        else if (token.Value is "load")
+        {
+            if (typeStack.Count is 0)
+            {
+                throw new Exception($"`load` expects at least one value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            if (top is not DataType.Pointer)
+            {
+                throw new Exception($"`load` expects pointer on top of stack, but got `{top}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
+            }
+            operations.Add(new Operation(OperationType.LoadMemory, token));
+            typeStack.Push((DataType.Number, token));
         }
         else if (token.Value is "syscall0")
         {
@@ -1197,7 +1292,13 @@ static Queue<Token> LexProgram(string filename)
                 var split = remainingLine.Split(' ', 2);
                 word = split[0];
             }
-
+            if (word.Length > 6 && remainingLine.StartsWith("alloc["))
+            {
+                words.Enqueue(new Token(filename, word[..6], lineNr, currentColumn));
+                word = word[6..];
+                currentColumn += 6;
+                remainingLine = remainingLine[6..];
+            }
             if (word.Length > 4 && word.StartsWith("yes:"))
             {
                 words.Enqueue(new Token(filename, word[..4], lineNr, currentColumn));
@@ -1213,7 +1314,7 @@ static Queue<Token> LexProgram(string filename)
                 remainingLine = remainingLine[3..];
             }
 
-            if (word.Length > 1 && (word.EndsWith(";") || word.EndsWith("?") || (word.EndsWith(":") && !word.StartsWith("yes:") && !word.StartsWith("no:"))))
+            if (word.Length > 1 && (word.EndsWith(";") || word.EndsWith("?") || word.EndsWith("]") || (word.EndsWith(":") && !word.StartsWith("yes:") && !word.StartsWith("no:"))))
             {
                 words.Enqueue(new Token(filename, word[..^1], lineNr, currentColumn));
                 words.Enqueue(new Token(filename, word[^1..], lineNr, currentColumn + word.Length - 1));
@@ -1287,6 +1388,10 @@ enum OperationType
     PinStackElement,
     UnpinStackElement,
     Syscall,
+    AllocateMemory,
+    PushMemory,
+    StoreMemory,
+    LoadMemory,
 }
 
 record Meta(int? Number = null, string? Text = null, Operator? Operator = null, bool? Bool = null);

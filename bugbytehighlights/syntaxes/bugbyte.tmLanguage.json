@@ -42,6 +42,25 @@
 				{
 					"name": "keyword.control.syscall.bugbyte",
 					"match": "\\b(syscall[0-6])\\b"
+				},
+				{
+					"begin": "\\balloc\\[",
+					"beginCaptures": {
+						"0": {
+							"name": "keyword.control.alloc.bugbyte"
+						}
+					},
+					"patterns": [
+						{
+							"include": "$self"
+						}
+					],
+					"end": "\\]",
+					"endCaptures": {
+						"0": {
+							"name": "keyword.control.alloc.bugbyte"
+						}
+					}
 				}
 			]
 		},
@@ -49,7 +68,7 @@
 			"patterns": [
 				{
 					"name": "constant.language.bugbyte",
-					"match": "\\b(dup|drop|over|swap|print|prints)\\b"
+					"match": "\\b(dup|drop|over|swap|print|prints|store|load)\\b"
 				},
 				{
 					"name": "constant.numeric.bugbyte",
