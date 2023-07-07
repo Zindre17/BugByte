@@ -19,7 +19,7 @@ var words = LexProgram(fileName);
 try
 {
     var startBlock = GroupBlock(null, words);
-    var (program, typeStack) = ParseProgram(startBlock, new());
+    var (program, typeStack) = ParseProgram(startBlock, new(), new());
     if (typeStack.Count > 0)
     {
         throw new Exception($"The program must have an empty stack at the end. Got {typeStack.Count} items on the stack.");
@@ -639,7 +639,9 @@ static void GenerateAsembly(ParsedProgram program, string filename)
     File.WriteAllLines($"{filename.Split(".")[0]}.asm", assembly);
 }
 
-static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack, Dictionary<string, (DataType, Token)>? pinnedStackItems = null)
+// TODO: Allocate memory relative to the current scope from a pool
+// TODO: Deallocate memory at the end of scope
+static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack, Dictionary<string, Token> memories, Dictionary<string, (DataType, Token)>? pinnedStackItems = null)
 {
     var keywords = new string[]
     {
@@ -668,7 +670,6 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
         "using",
     };
     var operations = new List<Operation>();
-    var memories = new Dictionary<string, Token>();
     var tokens = block.Tokens;
     while (tokens.Count > 0)
     {
@@ -1067,7 +1068,7 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
                 throw new Exception($"Expected yes: or no: after ?, but got `{firstBranch1Token.Value}` @ {firstBranch1Token.Filename}:{firstBranch1Token.Line}:{firstBranch1Token.Column}");
             }
 
-            var (branch1Program, branch1Stack) = ParseProgram(branch1, new(typeStack));
+            var (branch1Program, branch1Stack) = ParseProgram(branch1, new(typeStack), memories);
 
             var endLabel = $"end_if_{token.Line}_{token.Column}";
             if (block.NestedBlocks.Count is 0)
@@ -1096,7 +1097,7 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
                 continue;
             }
             block.NestedBlocks.Dequeue();
-            var (branch2Program, branch2Stack) = ParseProgram(branch2, new(typeStack));
+            var (branch2Program, branch2Stack) = ParseProgram(branch2, new(typeStack), memories);
             var (diff, msg) = branch1Stack.Diff(branch2Stack);
             if (diff is TypeStackDiff.SizeDifference)
             {
@@ -1148,7 +1149,7 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
             var whileEndLabel = $"end_while_{token.Line}_{token.Column}";
             operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileStartLabel)));
 
-            var (conditionProgram, conditionStack) = ParseProgram(conditionBlock, new TypeStack(typeStack));
+            var (conditionProgram, conditionStack) = ParseProgram(conditionBlock, new TypeStack(typeStack), memories);
             if ((conditionStack.Count - typeStack.Count) is not 1)
             {
                 throw new Exception($"Expected condition to produce a single value, but got {conditionStack.Count - typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
@@ -1161,7 +1162,7 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
             operations.AddRange(conditionProgram.Operations);
             operations.Add(new Operation(OperationType.JumpIfZero, token, new Meta(Text: whileEndLabel)));
 
-            var (whileProgram, whileStack) = ParseProgram(whileBlock, new TypeStack(conditionStack));
+            var (whileProgram, whileStack) = ParseProgram(whileBlock, new TypeStack(conditionStack), memories);
             if (whileStack.Count != typeStack.Count)
             {
                 throw new Exception($"Expected while block to produce 0 values, but got {whileStack.Count - typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
@@ -1214,7 +1215,7 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
 
             var consumingBlock = block.NestedBlocks.Dequeue();
 
-            var (consumingProgram, consumingStack) = ParseProgram(consumingBlock, new TypeStack(typeStack), pinnedStackItems);
+            var (consumingProgram, consumingStack) = ParseProgram(consumingBlock, new TypeStack(typeStack), memories, pinnedStackItems);
             operations.AddRange(consumingProgram.Operations);
             foreach (var assignment in assignments)
             {
