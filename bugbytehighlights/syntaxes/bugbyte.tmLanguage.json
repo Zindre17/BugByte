@@ -81,13 +81,28 @@
 			]
 		},
 		"strings": {
-			"name": "string.quoted.double.bugbyte",
-			"begin": "\"",
-			"end": "\"",
 			"patterns": [
 				{
-					"name": "constant.character.escape.bugbyte",
-					"match": "\\\\."
+					"name": "string.quoted.double.bugbyte",
+					"begin": "\"",
+					"end": "\"",
+					"patterns": [
+						{
+							"name": "constant.character.escape.bugbyte",
+							"match": "\\\\."
+						}
+					]
+				},
+				{
+					"name": "string.quoted.null.terminated.bugbyte",
+					"begin": "0\"",
+					"end": "\"",
+					"patterns": [
+						{
+							"name": "constant.character.escape.bugbyte",
+							"match": "\\\\."
+						}
+					]
 				}
 			]
 		}

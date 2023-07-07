@@ -264,6 +264,16 @@ static void GenerateAsembly(ParsedProgram program, string filename)
 
             stringLiterals.Add(text);
         }
+        else if (operation.Type is OperationType.PushZeroString)
+        {
+            var text = operation.Data?.Text
+                ?? throw new Exception($"Operation was of type push zero terminated string, but has no value. Probably a bug in the parser.");
+
+            assembly.Add($";-- push zero terminated string --");
+            assembly.Add($"  push string_{stringLiterals.Count}");
+
+            stringLiterals.Add(text);
+        }
         else if (operation.Type is OperationType.PushBool)
         {
             var boolean = operation.Data?.Bool
@@ -612,6 +622,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
     {
         // TODO: Do this cleaner. This is potentially wasteful (emtpy "" at the end).
         var stringLiteral = stringLiterals[i]
+            .Replace("\0", "\", 0, \"")
             .Replace("\\r", "\", 13, \"")
             .Replace("\\n", "\", 10, \"")
             .Replace("\\t", "\", 9, \"");
@@ -993,6 +1004,11 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
             operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 6)));
             typeStack.Push((DataType.Number, token));
         }
+        else if (IsZeroTerminatedString(token, out var zerostr))
+        {
+            typeStack.Push((DataType.Pointer, token));
+            operations.Add(new Operation(OperationType.PushZeroString, token, new Meta(Text: zerostr)));
+        }
         else if (IsString(token, out var str))
         {
             typeStack.Push((DataType.Number, token));
@@ -1226,6 +1242,17 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
         return false;
     }
 
+    bool IsZeroTerminatedString(Token token, out string value)
+    {
+        if (token.Value.StartsWith("0\"") && token.Value.EndsWith("\""))
+        {
+            value = token.Value[2..^1] + '\0';
+            return true;
+        }
+        value = "";
+        return false;
+    }
+
     void ParseOperator(Token token, Operator operatorType)
     {
         if (typeStack.Count is 0)
@@ -1278,9 +1305,9 @@ static Queue<Token> LexProgram(string filename)
         while (remainingLine.Length > 0)
         {
             string word;
-            if (remainingLine.StartsWith('"'))
+            if (remainingLine.StartsWith('"') || remainingLine.StartsWith("0\""))
             {
-                var endQuoteIndex = remainingLine.IndexOf('"', 1);
+                var endQuoteIndex = remainingLine.IndexOf('"', remainingLine.StartsWith("\"") ? 1 : 2);
                 if (endQuoteIndex == -1)
                 {
                     throw new Exception($"Missing end quote for string literal `{remainingLine}` @ {filename}:{lineNr}:{currentColumn}");
@@ -1380,6 +1407,7 @@ enum OperationType
     Swap,
     PushNumber,
     PushString,
+    PushZeroString,
     PushBool,
     PushDuplicate,
     PushPinnedStackItem,
