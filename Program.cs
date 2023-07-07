@@ -1068,7 +1068,7 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
                 throw new Exception($"Expected yes: or no: after ?, but got `{firstBranch1Token.Value}` @ {firstBranch1Token.Filename}:{firstBranch1Token.Line}:{firstBranch1Token.Column}");
             }
 
-            var (branch1Program, branch1Stack) = ParseProgram(branch1, new(typeStack), memories);
+            var (branch1Program, branch1Stack) = ParseProgram(branch1, new(typeStack), memories, pinnedStackItems);
 
             var endLabel = $"end_if_{token.Line}_{token.Column}";
             if (block.NestedBlocks.Count is 0)
@@ -1097,7 +1097,7 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
                 continue;
             }
             block.NestedBlocks.Dequeue();
-            var (branch2Program, branch2Stack) = ParseProgram(branch2, new(typeStack), memories);
+            var (branch2Program, branch2Stack) = ParseProgram(branch2, new(typeStack), memories, pinnedStackItems);
             var (diff, msg) = branch1Stack.Diff(branch2Stack);
             if (diff is TypeStackDiff.SizeDifference)
             {
@@ -1149,7 +1149,7 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
             var whileEndLabel = $"end_while_{token.Line}_{token.Column}";
             operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileStartLabel)));
 
-            var (conditionProgram, conditionStack) = ParseProgram(conditionBlock, new TypeStack(typeStack), memories);
+            var (conditionProgram, conditionStack) = ParseProgram(conditionBlock, new TypeStack(typeStack), memories, pinnedStackItems);
             if ((conditionStack.Count - typeStack.Count) is not 1)
             {
                 throw new Exception($"Expected condition to produce a single value, but got {conditionStack.Count - typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
@@ -1162,7 +1162,7 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
             operations.AddRange(conditionProgram.Operations);
             operations.Add(new Operation(OperationType.JumpIfZero, token, new Meta(Text: whileEndLabel)));
 
-            var (whileProgram, whileStack) = ParseProgram(whileBlock, new TypeStack(conditionStack), memories);
+            var (whileProgram, whileStack) = ParseProgram(whileBlock, new TypeStack(conditionStack), memories, pinnedStackItems);
             if (whileStack.Count != typeStack.Count)
             {
                 throw new Exception($"Expected while block to produce 0 values, but got {whileStack.Count - typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
