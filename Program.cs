@@ -18,7 +18,7 @@ var words = LexProgram(fileName);
 
 try
 {
-    var startBlock = GroupBlock(null, words);
+    var startBlock = GroupBlock(null, words, new());
     var (program, typeStack) = ParseProgram(startBlock, new(), new());
     if (typeStack.Count > 0)
     {
@@ -57,9 +57,9 @@ if (!RunExternalCommand("chmod", $"+x {fileNameWithoutExtension}"))
 
 RunExternalCommand($"./{fileNameWithoutExtension}", "", false);
 
-static Block GroupBlock(Token? last, Queue<Token> tokens, string? expectedClosingTag = null)
+static Block GroupBlock(Token? last, Queue<Token> tokens, Dictionary<string, Block> functions, string? expectedClosingTag = null)
 {
-    var block = new Block(new(), new());
+    var block = new Block(new(), new(), functions);
     if (tokens.Count is 0)
     {
         if (last is null)
@@ -91,7 +91,7 @@ static Block GroupBlock(Token? last, Queue<Token> tokens, string? expectedClosin
             if (tokens.Peek().Value is "yes:" or "no:" && tokens.Count > 0)
             {
                 missingBranch = tokens.Peek().Value is "yes:" ? "no:" : "yes:";
-                block.NestedBlocks.Enqueue(GroupBlock(token, tokens, ";"));
+                block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, ";"));
             }
             if (tokens.Count is 0)
             {
@@ -99,20 +99,33 @@ static Block GroupBlock(Token? last, Queue<Token> tokens, string? expectedClosin
             }
             if (tokens.Peek().Value == missingBranch && tokens.Count > 0)
             {
-                block.NestedBlocks.Enqueue(GroupBlock(token, tokens, ";"));
+                block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, ";"));
             }
         }
         else if (token.Value is "while")
         {
             block.Tokens.Enqueue(token);
-            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, ":"));
-            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, ";"));
+            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, ":"));
+            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, ";"));
         }
         else if (token.Value is "using")
         {
             block.Tokens.Enqueue(token);
-            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, ":"));
-            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, ";"));
+            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, ":"));
+            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, ";"));
+        }
+        else if (token.Value.EndsWith("()"))
+        {
+            var functionName = token.Value[..^2];
+            if (tokens.Count is 0 || tokens.Dequeue().Value is not ":")
+            {
+                throw new Exception($"Missing ':' after function declaration {functionName}.");
+            }
+            var functionBlock = GroupBlock(token, tokens, block.Functions, ";");
+            if (!block.Functions.TryAdd(functionName, functionBlock))
+            {
+                throw new Exception($"Duplicate function {functionName}.");
+            }
         }
         else
         {
@@ -678,6 +691,12 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
         {
             operations.Add(new Operation(OperationType.PushPinnedStackItem, token, new Meta(Text: token.Value)));
             typeStack.Push((tuple.Item1, token));
+        }
+        else if (block.Functions.TryGetValue(token.Value, out var functionBlock))
+        {
+            var (parsedFunction, functionStack) = ParseProgram(functionBlock, new(typeStack), new());
+            operations.AddRange(parsedFunction.Operations);
+            typeStack = functionStack;
         }
         else if (memories.ContainsKey(token.Value))
         {
@@ -1429,7 +1448,7 @@ record Operation(OperationType Type, Token Token, Meta? Data = null);
 
 record ParsedProgram(List<Operation> Operations);
 
-record Block(Queue<Token> Tokens, Queue<Block> NestedBlocks);
+record Block(Queue<Token> Tokens, Queue<Block> NestedBlocks, Dictionary<string, Block> Functions);
 
 class TypeStack : Stack<(DataType, Token)>
 {
