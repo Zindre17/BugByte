@@ -403,6 +403,16 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 assembly.Add($"  div rbx");
                 assembly.Add($"  push rdx");
             }
+            else if (op is Operator.Not)
+            {
+                assembly.Add(";-- not --");
+                assembly.Add($"  mov rcx, 1");
+                assembly.Add($"  mov rdx, 0");
+                assembly.Add($"  pop rax");
+                assembly.Add($"  cmp rax, 0");
+                assembly.Add($"  cmove rdx, rcx");
+                assembly.Add($"  push rdx");
+            }
             else if (op is Operator.Equal)
             {
                 assembly.Add(";-- equal --");
@@ -759,6 +769,33 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
             operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: str)));
             operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: Operator.StringEqual)));
             typeStack.Push((DataType.Number, token));
+        }
+        else if (token.Value is "!==")
+        {
+            if (typeStack.Count < 2)
+            {
+                throw new Exception($"`!==` expects at least two elements on the stack, but got {typeStack.Count}.");
+            }
+            var (type1, _) = typeStack.Pop();
+            if (type1 is not DataType.Pointer)
+            {
+                throw new Exception($"`!==` expects a pointer to a string on top of the stack, but got {type1}.");
+            }
+            var (type2, _) = typeStack.Pop();
+            if (type2 is not DataType.Number)
+            {
+                throw new Exception($"`!==` expects a number as the second element on the stack, but got {type2}.");
+            }
+            var nextToken = GetNextToken($"Expected string literal after `!==`, but got nothing.");
+            if (!IsString(nextToken, out var str))
+            {
+                throw new Exception($"Expected string literal after `!==`, but got {nextToken}");
+            }
+
+            operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: str)));
+            operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: Operator.StringEqual)));
+            typeStack.Push((DataType.Number, token));
+            operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: Operator.Not)));
         }
         else if (token.Value is "!=")
         {
@@ -1409,6 +1446,8 @@ enum Operator
     Multiply,
     Divide,
     Modulo,
+
+    Not,
 
     Equal,
     NotEqual,
