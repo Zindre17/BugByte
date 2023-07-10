@@ -361,39 +361,35 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 assembly.Add($".string_equal_end:");
                 continue;
             }
-
-            var number = operation.Data.Number
-                ?? throw new Exception($"Operation was of type operator but has no value. Probably a bug in the parser. @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
-
-            if (op is Operator.Add)
+            else if (op is Operator.Add)
             {
                 assembly.Add(";-- add --");
+                assembly.Add($"  pop rbx");
                 assembly.Add($"  pop rax");
-                assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  add rax, rbx");
                 assembly.Add($"  push rax");
             }
             else if (op is Operator.Subtract)
             {
                 assembly.Add(";-- subtract --");
+                assembly.Add($"  pop rbx");
                 assembly.Add($"  pop rax");
-                assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  sub rax, rbx");
                 assembly.Add($"  push rax");
             }
             else if (op is Operator.Multiply)
             {
                 assembly.Add(";-- multiply --");
+                assembly.Add($"  pop rbx");
                 assembly.Add($"  pop rax");
-                assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  mul rbx");
                 assembly.Add($"  push rax");
             }
             else if (op is Operator.Divide)
             {
                 assembly.Add(";-- divide --");
+                assembly.Add($"  pop rbx");
                 assembly.Add($"  pop rax");
-                assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  div rbx");
                 assembly.Add($"  push rax");
                 // TODO: merge this with modulo
@@ -402,8 +398,8 @@ static void GenerateAsembly(ParsedProgram program, string filename)
             {
                 assembly.Add(";-- modulo --");
                 assembly.Add($"  xor rdx, rdx");
+                assembly.Add($"  pop rbx");
                 assembly.Add($"  pop rax");
-                assembly.Add($"  mov rbx, {number}");
                 assembly.Add($"  div rbx");
                 assembly.Add($"  push rdx");
             }
@@ -412,8 +408,9 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 assembly.Add(";-- equal --");
                 assembly.Add($"  mov rcx, 1");
                 assembly.Add($"  mov rdx, 0");
+                assembly.Add($"  pop rbx");
                 assembly.Add($"  pop rax");
-                assembly.Add($"  cmp rax, {number}");
+                assembly.Add($"  cmp rax, rbx");
                 assembly.Add($"  cmove rdx, rcx");
                 assembly.Add($"  push rdx");
             }
@@ -422,8 +419,9 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 assembly.Add(";-- not equal --");
                 assembly.Add($"  mov rcx, 1");
                 assembly.Add($"  mov rdx, 0");
+                assembly.Add($"  pop rbx");
                 assembly.Add($"  pop rax");
-                assembly.Add($"  cmp rax, {number}");
+                assembly.Add($"  cmp rax, rbx");
                 assembly.Add($"  cmovne rdx, rcx");
                 assembly.Add($"  push rdx");
             }
@@ -432,8 +430,9 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 assembly.Add(";-- less than --");
                 assembly.Add($"  mov rcx, 1");
                 assembly.Add($"  mov rdx, 0");
+                assembly.Add($"  pop rbx");
                 assembly.Add($"  pop rax");
-                assembly.Add($"  cmp rax, {number}");
+                assembly.Add($"  cmp rax, rbx");
                 assembly.Add($"  cmovl rdx, rcx");
                 assembly.Add($"  push rdx");
             }
@@ -442,8 +441,9 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 assembly.Add(";-- less than or equal --");
                 assembly.Add($"  mov rcx, 1");
                 assembly.Add($"  mov rdx, 0");
+                assembly.Add($"  pop rbx");
                 assembly.Add($"  pop rax");
-                assembly.Add($"  cmp rax, {number}");
+                assembly.Add($"  cmp rax, rbx");
                 assembly.Add($"  cmovle rdx, rcx");
                 assembly.Add($"  push rdx");
             }
@@ -452,8 +452,9 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 assembly.Add(";-- greater than --");
                 assembly.Add($"  mov rcx, 1");
                 assembly.Add($"  mov rdx, 0");
+                assembly.Add($"  pop rbx");
                 assembly.Add($"  pop rax");
-                assembly.Add($"  cmp rax, {number}");
+                assembly.Add($"  cmp rax, rbx");
                 assembly.Add($"  cmovg rdx, rcx");
                 assembly.Add($"  push rdx");
             }
@@ -462,8 +463,9 @@ static void GenerateAsembly(ParsedProgram program, string filename)
                 assembly.Add(";-- greater than or equal --");
                 assembly.Add($"  mov rcx, 1");
                 assembly.Add($"  mov rdx, 0");
+                assembly.Add($"  pop rbx");
                 assembly.Add($"  pop rax");
-                assembly.Add($"  cmp rax, {number}");
+                assembly.Add($"  cmp rax, rbx");
                 assembly.Add($"  cmovge rdx, rcx");
                 assembly.Add($"  push rdx");
             }
@@ -1281,24 +1283,27 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
         }
 
         var nextToken = GetNextToken($"Expected number after `{token.Value}`, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-        if (!int.TryParse(nextToken.Value, out var operand))
+
+        var (prasedImmediate, immediateStack) = ParseProgram(new Block(new Queue<Token>(new[] { nextToken }), new(), block.Functions), new(typeStack), memories, pinnedStackItems);
+        if (immediateStack.Count - typeStack.Count is not 1)
         {
-            throw new Exception($"Expected number after `{token.Value}`, but got `{nextToken.Value}` @ {nextToken.Filename}:{nextToken.Line}:{nextToken.Column}");
+            throw new Exception($"Expected immediate to produce a single value, but got {immediateStack.Count - typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
         }
+        operations.AddRange(prasedImmediate.Operations);
 
         var (type, _) = typeStack.Pop();
         if (type is not DataType.Number)
         {
             if (operatorType is Operator.Add or Operator.Subtract && type is DataType.Pointer)
             {
-                operations.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: operatorType)));
+                operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: operatorType)));
                 typeStack.Push((type, token));
                 return;
             }
             throw new Exception($"`{token.Value}` expected number on stack, but got `{type}` @ {token.Filename}:{token.Line}:{token.Column}");
         }
 
-        operations?.Add(new Operation(OperationType.Operator, token, new Meta(Number: operand, Operator: operatorType)));
+        operations?.Add(new Operation(OperationType.Operator, token, new Meta(Operator: operatorType)));
         typeStack.Push((DataType.Number, token));
     }
 
