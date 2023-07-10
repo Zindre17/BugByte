@@ -1326,21 +1326,45 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
         {
             throw new Exception($"Expected immediate to produce a single value, but got {immediateStack.Count - typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
         }
-        operations.AddRange(prasedImmediate.Operations);
 
+        operations.AddRange(prasedImmediate.Operations);
+        operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: operatorType)));
+
+        var (immediateType, _) = immediateStack.Pop();
         var (type, _) = typeStack.Pop();
-        if (type is not DataType.Number)
+
+        if (operatorType is Operator.Add)
         {
-            if (operatorType is Operator.Add or Operator.Subtract && type is DataType.Pointer)
+            if (type is DataType.Pointer && immediateType is DataType.Pointer)
             {
-                operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: operatorType)));
-                typeStack.Push((type, token));
+                throw new Exception($"Pointer + Pointer is not allowed @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            if (type is DataType.Pointer || immediateType is DataType.Pointer)
+            {
+                typeStack.Push((DataType.Pointer, token));
                 return;
             }
-            throw new Exception($"`{token.Value}` expected number on stack, but got `{type}` @ {token.Filename}:{token.Line}:{token.Column}");
+        }
+        else if (operatorType is Operator.Subtract)
+        {
+            if (type is DataType.Pointer && immediateType is DataType.Pointer)
+            {
+                // NOTE: pointer - pointer is a number, and not a pointer
+                typeStack.Push((DataType.Number, token));
+                return;
+            }
+            else if (type is DataType.Pointer || immediateType is DataType.Pointer)
+            {
+                typeStack.Push((DataType.Pointer, token));
+                return;
+            }
         }
 
-        operations?.Add(new Operation(OperationType.Operator, token, new Meta(Operator: operatorType)));
+        if (type is DataType.Pointer || immediateType is DataType.Pointer)
+        {
+            throw new Exception($"`{token.Value}` is not allowed on pointers @ {token.Filename}:{token.Line}:{token.Column}");
+        }
+
         typeStack.Push((DataType.Number, token));
     }
 
