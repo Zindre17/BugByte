@@ -19,12 +19,15 @@ var words = LexProgram(fileName);
 try
 {
     var startBlock = GroupBlock(null, words, new());
-    var (program, typeStack) = ParseProgram(startBlock, new(), new());
+    var program = ParseProgram(startBlock, new(), new());
+    var typeStack = TypeCheckProgram(program, new(), new());
     if (typeStack.Count > 0)
     {
         throw new Exception($"The program must have an empty stack at the end. Got {typeStack.Count} items on the stack.");
     }
-    GenerateAsembly(program, fileName);
+    var flattendProgram = FlattenProgram(program);
+    var assembly = GenerateAssembly(flattendProgram);
+    File.WriteAllLines($"{fileName.Split(".")[0]}.asm", assembly);
 }
 catch (Exception e)
 {
@@ -56,6 +59,36 @@ if (!RunExternalCommand("chmod", $"+x {fileNameWithoutExtension}"))
 }
 
 RunExternalCommand($"./{fileNameWithoutExtension}", "", false);
+
+static ParsedProgram FlattenProgram(ParsedProgram program)
+{
+    var flattenedProgram = new ParsedProgram(new(), new());
+    foreach (var operation in program.Operations)
+    {
+        if (operation.Type is OperationType.Loop)
+        {
+            flattenedProgram.Operations.AddRange(FlattenProgram(program.NestedPrograms.Dequeue()).Operations);
+            flattenedProgram.Operations.AddRange(FlattenProgram(program.NestedPrograms.Dequeue()).Operations);
+        }
+        else if (operation.Type is OperationType.Branch)
+        {
+            var count = operation.Data?.Number ?? throw new Exception("Branch operation must have a branch count.");
+            for (var i = 0; i < count; i++)
+            {
+                flattenedProgram.Operations.AddRange(FlattenProgram(program.NestedPrograms.Dequeue()).Operations);
+            }
+        }
+        else if (operation.Type is OperationType.UsingBlock)
+        {
+            flattenedProgram.Operations.AddRange(FlattenProgram(program.NestedPrograms.Dequeue()).Operations);
+        }
+        else
+        {
+            flattenedProgram.Operations.Add(operation);
+        }
+    }
+    return flattenedProgram;
+}
 
 static Block GroupBlock(Token? last, Queue<Token> tokens, Dictionary<string, Block> functions, string? expectedClosingTag = null)
 {
@@ -200,7 +233,7 @@ static bool RunExternalCommand(string command, string arguments, bool printInfo 
     }
 }
 
-static void GenerateAsembly(ParsedProgram program, string filename)
+static List<string> GenerateAssembly(ParsedProgram program)
 {
     const int TempStackCapacity = 100;
 
@@ -597,14 +630,12 @@ static void GenerateAsembly(ParsedProgram program, string filename)
         }
         else if (operation.Type is OperationType.PinStackElement)
         {
-            var label = operation.Data?.Text
-                ?? throw new Exception("Pin-stack-element-keyword has no name. Probably a bug in the parser.");
             var index = pinnedStackItems.Count;
             if (index is TempStackCapacity)
             {
                 throw new Exception($"Too many pinned stack items. Max is {TempStackCapacity}.");
             }
-            pinnedStackItems.Add(label);
+            pinnedStackItems.Add(operation.Token.Value);
             assembly.Add(";-- pin stack element --");
             assembly.Add($"  pop rax");
             assembly.Add($"  mov [r15], rax");
@@ -612,9 +643,7 @@ static void GenerateAsembly(ParsedProgram program, string filename)
         }
         else if (operation.Type is OperationType.PushPinnedStackItem)
         {
-            var label = operation.Data?.Text
-                ?? throw new Exception("Push-pinned-stack-item-keyword has no name. Probably a bug in the parser.");
-
+            var label = operation.Token.Value;
             var index = pinnedStackItems.IndexOf(label);
             if (index == -1)
             {
@@ -660,13 +689,401 @@ static void GenerateAsembly(ParsedProgram program, string filename)
     {
         assembly.Add($"{name}: rb {size}");
     }
+    return assembly;
+}
 
-    File.WriteAllLines($"{filename.Split(".")[0]}.asm", assembly);
+static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Dictionary<string, DataType> pinnedStackItems)
+{
+    var nestedIndex = 0;
+    for (var i = 0; i < program.Operations.Count; i++)
+    {
+        var operation = program.Operations[i];
+        var token = operation.Token;
+
+        if (operation.Type is OperationType.PushBool)
+        {
+            // TODO: introduce a new type for booleans
+            typeStack.Push((DataType.Number, token));
+        }
+        else if (operation.Type is OperationType.PushString)
+        {
+            typeStack.Push((DataType.Number, token));
+            typeStack.Push((DataType.Pointer, token));
+        }
+        else if (operation.Type is OperationType.PushZeroString)
+        {
+            typeStack.Push((DataType.Pointer, token));
+        }
+        else if (operation.Type is OperationType.PushNumber)
+        {
+            typeStack.Push((DataType.Number, token));
+        }
+        else if (operation.Type is OperationType.PushPinnedStackItem)
+        {
+            if (!pinnedStackItems.TryGetValue(token.Value, out var dataType))
+            {
+                throw new Exception($"Unknown pinned stack item {token}");
+            }
+            typeStack.Push((dataType, token));
+        }
+        else if (operation.Type is OperationType.PushDuplicate)
+        {
+            if (typeStack.Count is 0)
+            {
+                throw new Exception($"{operation.Type} expects a value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, _) = typeStack.Peek();
+            typeStack.Push((top, token));
+        }
+        else if (operation.Type is OperationType.PushMemory)
+        {
+            typeStack.Push((DataType.Pointer, token));
+        }
+        else if (operation.Type is OperationType.PinStackElement)
+        {
+            pinnedStackItems[operation.Token.Value] = typeStack.Pop().Item1;
+        }
+        else if (operation.Type is OperationType.UnpinStackElement)
+        {
+            pinnedStackItems.Remove(operation.Token.Value);
+        }
+        else if (operation.Type is OperationType.Drop)
+        {
+            if (typeStack.Count is 0)
+            {
+                throw new Exception($"{operation.Type} expects a value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            typeStack.Pop();
+        }
+        else if (operation.Type is OperationType.Over)
+        {
+            if (typeStack.Count < 2)
+            {
+                throw new Exception($"{operation.Type} expects at least two values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var top = typeStack.Pop();
+            var (prev, _) = typeStack.Peek();
+            typeStack.Push(top);
+            typeStack.Push((prev, token));
+        }
+        else if (operation.Type is OperationType.Swap)
+        {
+            if (typeStack.Count < 2)
+            {
+                throw new Exception($"{operation.Type} expects at least two values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, _) = typeStack.Pop();
+            var (prev, _) = typeStack.Pop();
+            typeStack.Push((top, token));
+            typeStack.Push((prev, token));
+        }
+        else if (operation.Type is OperationType.Jump)
+        {
+            // does not affect the stack
+        }
+        else if (operation.Type is OperationType.JumpIfNotZero or OperationType.JumpIfZero)
+        {
+            if (typeStack.Count is 0)
+            {
+                throw new Exception($"{operation.Type} expects a value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            // TODO: replace with a new type for booleans
+            if (top is not DataType.Number)
+            {
+                throw new Exception($"{operation.Type} expects a number on the stack, but got `{top}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
+            }
+        }
+        else if (operation.Type is OperationType.AllocateMemory)
+        {
+            // does not affect the stack
+        }
+        else if (operation.Type is OperationType.Print)
+        {
+            if (typeStack.Count is 0)
+            {
+                throw new Exception($"{operation.Type} expected value on stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            if (top is not DataType.Number and not DataType.Pointer)
+            {
+                throw new Exception($"{operation.Type} expected number or pointer on stack, but got `{top}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
+            }
+        }
+        else if (operation.Type is OperationType.PrintString)
+        {
+            if (typeStack.Count < 2)
+            {
+                throw new Exception($"{operation.Type} expected at least two values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            var (nextTop, nextTopToken) = typeStack.Pop();
+            if (top is not DataType.Pointer)
+            {
+                throw new Exception($"{operation.Type} expected pointer on top of stack, but got `{top}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
+            }
+            if (nextTop is not DataType.Number)
+            {
+                throw new Exception($"{operation.Type} expected number as second element ont the stack, but got `{nextTop}` @ {nextTopToken.Filename}:{nextTopToken.Line}:{nextTopToken.Column}");
+            }
+        }
+        else if (operation.Type is OperationType.Operator)
+        {
+            var op = operation.Data?.Operator ??
+                throw new Exception("Operation is missing operator type. Probably a bug in the parser.");
+
+
+            if (op is Operator.Not)
+            {
+                if (typeStack.Count is 0)
+                {
+                    throw new Exception($"Operator `{op}` expects a value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+                }
+                var (topType, topToken) = typeStack.Pop();
+                // TODO: replace with a new type for booleans
+                if (topType is not DataType.Number)
+                {
+                    throw new Exception($"Operator `{op}` expects a number on the stack, but got `{topType}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
+                }
+                // TODO: replace with a new type for booleans
+                typeStack.Push((DataType.Number, token));
+                continue;
+            }
+
+            if (op is Operator.StringEqual)
+            {
+                if (typeStack.Count < 4)
+                {
+                    throw new Exception($"Operator {op} expects at least 4 elements on the stack, but got {typeStack.Count}.");
+                }
+                var (type1, _) = typeStack.Pop();
+                if (type1 is not DataType.Pointer)
+                {
+                    throw new Exception($"Operator {op} expects a pointer to a string on top of the stack, but got {type1}.");
+                }
+                var (type2, _) = typeStack.Pop();
+                if (type2 is not DataType.Number)
+                {
+                    throw new Exception($"Operator {op} expects a number as the second element on the stack, but got {type2}.");
+                }
+                var (type3, _) = typeStack.Pop();
+                if (type3 is not DataType.Pointer)
+                {
+                    throw new Exception($"Operator {op} expects a pointer to a string as the third element on the stack, but got {type3}.");
+                }
+                var (type4, _) = typeStack.Pop();
+                if (type4 is not DataType.Number)
+                {
+                    throw new Exception($"Operator {op} expects a number as the fourth element on the stack, but got {type4}.");
+                }
+                // TODO: replace with a new type for booleans
+                typeStack.Push((DataType.Number, token));
+                continue;
+            }
+
+            if (typeStack.Count < 2)
+            {
+                throw new Exception($"Operator `{op}` expects at least two values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+
+            if (op is Operator.Equal or Operator.NotEqual or Operator.LessThan or Operator.GreaterThan or Operator.LessThanOrEqual or Operator.GreaterThanOrEqual)
+            {
+                typeStack.Pop();
+                typeStack.Pop();
+                // TODO: replace with a new type for booleans
+                typeStack.Push((DataType.Number, token));
+            }
+            else if (op is Operator.Add)
+            {
+                var (type, _) = typeStack.Pop();
+                var (nextType, _) = typeStack.Pop();
+
+                if (type is DataType.Pointer && nextType is DataType.Pointer)
+                {
+                    throw new Exception($"Pointer + Pointer is not allowed @ {token.Filename}:{token.Line}:{token.Column}");
+                }
+
+                if (type is DataType.Pointer || nextType is DataType.Pointer)
+                {
+                    typeStack.Push((DataType.Pointer, token));
+                }
+                else
+                {
+                    typeStack.Push((DataType.Number, token));
+                }
+            }
+            else if (op is Operator.Subtract)
+            {
+                var (type, _) = typeStack.Pop();
+                var (nextType, _) = typeStack.Pop();
+                if (type is DataType.Pointer && nextType is DataType.Pointer)
+                {
+                    // NOTE: pointer - pointer is a number, and not a pointer
+                    typeStack.Push((DataType.Number, token));
+                }
+                else if (type is DataType.Pointer || nextType is DataType.Pointer)
+                {
+                    typeStack.Push((DataType.Pointer, token));
+                }
+                else
+                {
+                    typeStack.Push((DataType.Number, token));
+                }
+            }
+            else if (op is Operator.Multiply or Operator.Divide or Operator.Modulo)
+            {
+                var (top, topToken) = typeStack.Pop();
+                var (nextTop, nextTopToken) = typeStack.Pop();
+                if (top is DataType.Pointer || nextTop is DataType.Pointer)
+                {
+                    throw new Exception($"Operator `{op}` does not support pointers @ {token.Filename}:{token.Line}:{token.Column}");
+                }
+                typeStack.Push((DataType.Number, token));
+            }
+        }
+        else if (operation.Type is OperationType.StoreMemory)
+        {
+            if (typeStack.Count < 2)
+            {
+                throw new Exception($"{operation.Type} expects at least two values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            var (nextTop, nextTopToken) = typeStack.Pop();
+            if (nextTop is not DataType.Pointer)
+            {
+                throw new Exception($"{operation.Type} expects a pointer as second element ont the stack, but got `{nextTop}` @ {nextTopToken.Filename}:{nextTopToken.Line}:{nextTopToken.Column}");
+            }
+        }
+        else if (operation.Type is OperationType.LoadMemory)
+        {
+            if (typeStack.Count is 0)
+            {
+                throw new Exception($"{operation.Type} expects at least one value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            if (top is not DataType.Pointer)
+            {
+                throw new Exception($"{operation.Type} expects pointer on top of stack, but got `{top}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
+            }
+            // TODO: replace this with the actual type if possible
+            typeStack.Push((DataType.Number, token));
+        }
+        else if (operation.Type is OperationType.Syscall)
+        {
+            var arguments = operation.Data?.Number ??
+                throw new Exception($"{operation.Type} expects argument count as metadata. Probably a bug in the parser. @ {token.Filename}:{token.Line}:{token.Column}");
+
+            if (typeStack.Count < (arguments + 1))
+            {
+                throw new Exception($"{operation.Type} expects at least {arguments + 1} value(s) on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+
+            var (top, topToken) = typeStack.Pop();
+            if (top is not DataType.Number)
+            {
+                throw new Exception($"{operation.Type} expects number on top of stack, but got `{top}` from {topToken}.");
+            }
+
+            for (var j = 0; j < arguments; j++)
+            {
+                typeStack.Pop();
+            }
+
+            typeStack.Push((DataType.Number, token));
+        }
+        else if (operation.Type is OperationType.Branch)
+        {
+            var count = operation.Data?.Number ??
+                throw new Exception($"{operation.Type} expects argument count as metadata. Probably a bug in the parser. @ {token.Filename}:{token.Line}:{token.Column}");
+
+            if (program.NestedPrograms.Count < count + nestedIndex)
+            {
+                throw new Exception($"{operation.Type} expects at least {count} nested program(s), but got {program.NestedPrograms.Count - nestedIndex} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+
+            if (count is 1)
+            {
+                // NOTE: Must not alter the stack (typewise nor size wise)
+                var branch = program.NestedPrograms.ElementAt(nestedIndex++);
+                var branchStack = TypeCheckProgram(branch, new(typeStack), pinnedStackItems);
+                var (diffResult, stackDump) = typeStack.Diff(branchStack);
+                if (diffResult is not TypeStackDiff.Equal)
+                {
+                    throw new Exception($"Single branch `?` block must leave the stack unchanged, but it left it in a different state @ {token.Filename}:{token.Line}:{token.Column}\n{stackDump}");
+                }
+            }
+            else
+            {
+                // NOTE: each branch must leave the stack in the same state
+                var branch = program.NestedPrograms.ElementAt(nestedIndex++);
+                var branchStack = TypeCheckProgram(branch, new(typeStack), pinnedStackItems);
+                var branchToken = branch.Operations.First().Token;
+                for (var j = 1; j < count; j++)
+                {
+                    var otherBranch = program.NestedPrograms.ElementAt(nestedIndex++);
+                    var otherBranchStack = TypeCheckProgram(otherBranch, new(typeStack), pinnedStackItems);
+                    var otherBranchToken = otherBranch.Operations.First().Token;
+                    var (diff, stackDump) = branchStack.Diff(otherBranchStack);
+                    if (diff is TypeStackDiff.SizeDifference)
+                    {
+                        throw new Exception($"Branches starting at {branchToken.Filename}:{branchToken.Line}:{branchToken.Column} and {otherBranchToken.Filename}:{otherBranchToken.Line}:{otherBranchToken.Column} have different stack sizes.");
+                    }
+                    else if (diff is TypeStackDiff.TypeDifference)
+                    {
+                        throw new Exception($"Branches starting at {branchToken.Filename}:{branchToken.Line}:{branchToken.Column} and {otherBranchToken.Filename}:{otherBranchToken.Line}:{otherBranchToken.Column} have diverging stack types:\n{stackDump}");
+                    }
+                }
+                typeStack = branchStack;
+            }
+        }
+        else if (operation.Type is OperationType.Loop)
+        {
+            if (program.NestedPrograms.Count < 2)
+            {
+                throw new Exception($"Loop expects two nested programs, but got {program.NestedPrograms.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+
+            var condition = program.NestedPrograms.ElementAt(nestedIndex++);
+            var conditionStack = TypeCheckProgram(condition, new(typeStack), pinnedStackItems);
+            if ((conditionStack.Count - typeStack.Count) is not 0)
+            {
+                throw new Exception($"Expected condition to produce no values (conditional jump consumes produced bool), but got {conditionStack.Count - typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+
+            var whileBlock = program.NestedPrograms.ElementAt(nestedIndex++);
+            var whileStack = TypeCheckProgram(whileBlock, new(conditionStack), pinnedStackItems);
+            var (diff, stackDump) = conditionStack.Diff(whileStack);
+            if (diff is TypeStackDiff.SizeDifference)
+            {
+                throw new Exception($"Loop must not alter stack size. Size diff: {whileStack.Count - conditionStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            else if (diff is TypeStackDiff.TypeDifference)
+            {
+                throw new Exception($"Stack types diverged before and after loop:\n{stackDump}\n@ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            typeStack = whileStack;
+        }
+        else if (operation.Type is OperationType.Label)
+        {
+            // Does not affect typestack
+        }
+        else if (operation.Type is OperationType.UsingBlock)
+        {
+            var usingBlock = program.NestedPrograms.ElementAt(nestedIndex++);
+            var usingStack = TypeCheckProgram(usingBlock, new(typeStack), pinnedStackItems);
+            typeStack = usingStack;
+        }
+        else
+        {
+            throw new Exception($"Unknown operation `{operation.Type}` @ {token.Filename}:{token.Line}:{token.Column}");
+        }
+    }
+    return typeStack;
 }
 
 // TODO: Allocate memory relative to the current scope from a pool
 // TODO: Deallocate memory at the end of scope
-static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack, Dictionary<string, Token> memories, Dictionary<string, (DataType, Token)>? pinnedStackItems = null)
+static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memories, Dictionary<string, Token>? pinnedStackItems = null)
 {
     var keywords = new string[]
     {
@@ -696,29 +1113,26 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
     };
     var operations = new List<Operation>();
     var tokens = block.Tokens;
+    var program = new ParsedProgram(operations, new());
     while (tokens.Count > 0)
     {
         var token = tokens.Dequeue();
         if (pinnedStackItems is not null && pinnedStackItems.TryGetValue(token.Value, out var tuple))
         {
             operations.Add(new Operation(OperationType.PushPinnedStackItem, token, new Meta(Text: token.Value)));
-            typeStack.Push((tuple.Item1, token));
         }
         else if (block.Functions.TryGetValue(token.Value, out var functionBlock))
         {
-            var (parsedFunction, functionStack) = ParseProgram(functionBlock, new(typeStack), new());
+            var parsedFunction = ParseProgram(functionBlock, new());
             operations.AddRange(parsedFunction.Operations);
-            typeStack = functionStack;
         }
         else if (memories.ContainsKey(token.Value))
         {
             operations.Add(new Operation(OperationType.PushMemory, token, new Meta(Text: token.Value)));
-            typeStack.Push((DataType.Pointer, token));
         }
         else if (int.TryParse(token.Value, out var value))
         {
             operations.Add(new Operation(OperationType.PushNumber, token, new Meta(Number: value)));
-            typeStack.Push((DataType.Number, token));
         }
         else if (token.Value is "+")
         {
@@ -746,46 +1160,16 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
         }
         else if (token.Value is "==")
         {
-            if (typeStack.Count < 2)
-            {
-                throw new Exception($"`==` expects at least two elements on the stack, but got {typeStack.Count}.");
-            }
-            var (type1, _) = typeStack.Pop();
-            if (type1 is not DataType.Pointer)
-            {
-                throw new Exception($"`==` expects a pointer to a string on top of the stack, but got {type1}.");
-            }
-            var (type2, _) = typeStack.Pop();
-            if (type2 is not DataType.Number)
-            {
-                throw new Exception($"`==` expects a number as the second element on the stack, but got {type2}.");
-            }
             var nextToken = GetNextToken($"Expected string literal after `==`, but got nothing.");
             if (!IsString(nextToken, out var str))
             {
                 throw new Exception($"Expected string literal after `==`, but got {nextToken}");
             }
-
             operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: str)));
             operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: Operator.StringEqual)));
-            typeStack.Push((DataType.Number, token));
         }
         else if (token.Value is "!==")
         {
-            if (typeStack.Count < 2)
-            {
-                throw new Exception($"`!==` expects at least two elements on the stack, but got {typeStack.Count}.");
-            }
-            var (type1, _) = typeStack.Pop();
-            if (type1 is not DataType.Pointer)
-            {
-                throw new Exception($"`!==` expects a pointer to a string on top of the stack, but got {type1}.");
-            }
-            var (type2, _) = typeStack.Pop();
-            if (type2 is not DataType.Number)
-            {
-                throw new Exception($"`!==` expects a number as the second element on the stack, but got {type2}.");
-            }
             var nextToken = GetNextToken($"Expected string literal after `!==`, but got nothing.");
             if (!IsString(nextToken, out var str))
             {
@@ -794,7 +1178,6 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
 
             operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: str)));
             operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: Operator.StringEqual)));
-            typeStack.Push((DataType.Number, token));
             operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: Operator.Not)));
         }
         else if (token.Value is "!=")
@@ -819,76 +1202,26 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
         }
         else if (token.Value is "dup")
         {
-            if (typeStack.Count is 0)
-            {
-                throw new Exception($"`dup` expects a value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            }
             operations.Add(new Operation(OperationType.PushDuplicate, token));
-            var (prevValue, _) = typeStack.Peek();
-            typeStack.Push((prevValue, token));
         }
         else if (token.Value is "drop")
         {
-            if (typeStack.Count is 0)
-            {
-                throw new Exception($"`drop` expects a value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            typeStack.Pop();
             operations.Add(new Operation(OperationType.Drop, token));
         }
         else if (token.Value is "over")
         {
-            if (typeStack.Count < 2)
-            {
-                throw new Exception($"`over` expects at least two values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var top = typeStack.Pop();
-            var (prev, _) = typeStack.Peek();
-            typeStack.Push(top);
-            typeStack.Push((prev, token));
             operations.Add(new Operation(OperationType.Over, token));
         }
         else if (token.Value is "swap")
         {
-            if (typeStack.Count < 2)
-            {
-                throw new Exception($"`swap` expects at least two values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var (top, _) = typeStack.Pop();
-            var (prev, _) = typeStack.Pop();
-            typeStack.Push((top, token));
-            typeStack.Push((prev, token));
             operations.Add(new Operation(OperationType.Swap, token));
         }
         else if (token.Value is "print")
         {
-            if (typeStack.Count is 0)
-            {
-                throw new Exception($"`print` expected value on stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var (top, topToken) = typeStack.Pop();
-            if (top is not DataType.Number and not DataType.Pointer)
-            {
-                throw new Exception($"`print` expected number or pointer on stack, but got `{top}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
-            }
             operations.Add(new Operation(OperationType.Print, token));
         }
         else if (token.Value is "prints")
         {
-            if (typeStack.Count < 2)
-            {
-                throw new Exception($"`prints` expected at least two values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var (top, topToken) = typeStack.Pop();
-            var (nextTop, nextTopToken) = typeStack.Pop();
-            if (top is not DataType.Pointer)
-            {
-                throw new Exception($"`prints` expected pointer on top of stack, but got `{top}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
-            }
-            if (nextTop is not DataType.Number)
-            {
-                throw new Exception($"`prints` expected number as second element ont the stack, but got `{nextTop}` @ {nextTopToken.Filename}:{nextTopToken.Line}:{nextTopToken.Column}");
-            }
             operations.Add(new Operation(OperationType.PrintString, token));
         }
         else if (token.Value is "alloc[")
@@ -918,170 +1251,54 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
         }
         else if (token.Value is "store")
         {
-            if (typeStack.Count < 2)
-            {
-                throw new Exception($"`store` expects at least two values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var (top, topToken) = typeStack.Pop();
-            var (nextTop, nextTopToken) = typeStack.Pop();
-            if (nextTop is not DataType.Pointer)
-            {
-                throw new Exception($"`store` expects a pointer as second element ont the stack, but got `{nextTop}` @ {nextTopToken.Filename}:{nextTopToken.Line}:{nextTopToken.Column}");
-            }
             operations.Add(new Operation(OperationType.StoreMemory, token));
         }
         else if (token.Value is "load")
         {
-            if (typeStack.Count is 0)
-            {
-                throw new Exception($"`load` expects at least one value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var (top, topToken) = typeStack.Pop();
-            if (top is not DataType.Pointer)
-            {
-                throw new Exception($"`load` expects pointer on top of stack, but got `{top}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
-            }
             operations.Add(new Operation(OperationType.LoadMemory, token));
-            typeStack.Push((DataType.Number, token));
         }
         else if (token.Value is "syscall0")
         {
-            if (typeStack.Count is 0)
-            {
-                throw new Exception($"`syscall0` expects at least one value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var (top, topToken) = typeStack.Pop();
-            if (top is not DataType.Number)
-            {
-                throw new Exception($"`syscall0` expects number on top of stack, but got `{top}` from {topToken}.");
-            }
             operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 0)));
-            typeStack.Push((DataType.Number, token));
         }
         else if (token.Value is "syscall1")
         {
-            if (typeStack.Count < 2)
-            {
-                throw new Exception($"`syscall1` expects at least two values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var (top, topToken) = typeStack.Pop();
-            if (top is not DataType.Number)
-            {
-                throw new Exception($"`syscall1` expects number on top of stack, but got `{top}` from {topToken}.");
-            }
-            typeStack.Pop();
             operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 1)));
-            typeStack.Push((DataType.Number, token));
         }
         else if (token.Value is "syscall2")
         {
-            if (typeStack.Count < 3)
-            {
-                throw new Exception($"`syscall2` expects at least three values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var (top, topToken) = typeStack.Pop();
-            if (top is not DataType.Number)
-            {
-                throw new Exception($"`syscall2` expects number on top of stack, but got `{top}` from {topToken}.");
-            }
-            typeStack.Pop();
-            typeStack.Pop();
             operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 2)));
-            typeStack.Push((DataType.Number, token));
         }
         else if (token.Value is "syscall3")
         {
-            if (typeStack.Count < 4)
-            {
-                throw new Exception($"`syscall3` expects at least four values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var (top, topToken) = typeStack.Pop();
-            if (top is not DataType.Number)
-            {
-                throw new Exception($"`syscall3` expects number on top of stack, but got `{top}` from {topToken}.");
-            }
-            typeStack.Pop();
-            typeStack.Pop();
-            typeStack.Pop();
             operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 3)));
-            typeStack.Push((DataType.Number, token));
         }
         else if (token.Value is "syscall4")
         {
-            if (typeStack.Count < 5)
-            {
-                throw new Exception($"`syscall4` expects at least four values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var (top, topToken) = typeStack.Pop();
-            if (top is not DataType.Number)
-            {
-                throw new Exception($"`syscall4` expects number on top of stack, but got `{top}` from {topToken}.");
-            }
-            typeStack.Pop();
-            typeStack.Pop();
-            typeStack.Pop();
-            typeStack.Pop();
             operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 4)));
-            typeStack.Push((DataType.Number, token));
         }
         else if (token.Value is "syscall5")
         {
-            if (typeStack.Count < 6)
-            {
-                throw new Exception($"`syscall5` expects at least four values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var (top, topToken) = typeStack.Pop();
-            if (top is not DataType.Number)
-            {
-                throw new Exception($"`syscall5` expects number on top of stack, but got `{top}` from {topToken}.");
-            }
-            typeStack.Pop();
-            typeStack.Pop();
-            typeStack.Pop();
-            typeStack.Pop();
-            typeStack.Pop();
             operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 5)));
-            typeStack.Push((DataType.Number, token));
         }
         else if (token.Value is "syscall6")
         {
-            if (typeStack.Count < 7)
-            {
-                throw new Exception($"`syscall6` expects at least four values on the stack, but got {typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var (top, topToken) = typeStack.Pop();
-            if (top is not DataType.Number)
-            {
-                throw new Exception($"`syscall6` expects number on top of stack, but got `{top}` from {topToken}.");
-            }
-            typeStack.Pop();
-            typeStack.Pop();
-            typeStack.Pop();
-            typeStack.Pop();
-            typeStack.Pop();
-            typeStack.Pop();
             operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 6)));
-            typeStack.Push((DataType.Number, token));
         }
         else if (IsZeroTerminatedString(token, out var zerostr))
         {
-            typeStack.Push((DataType.Pointer, token));
             operations.Add(new Operation(OperationType.PushZeroString, token, new Meta(Text: zerostr)));
         }
         else if (IsString(token, out var str))
         {
-            typeStack.Push((DataType.Number, token));
-            typeStack.Push((DataType.Pointer, token));
             operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: str)));
         }
         else if (token.Value is "yes")
         {
-            typeStack.Push((DataType.Number, token));
             operations.Add(new Operation(OperationType.PushBool, token, new Meta(Bool: true)));
         }
         else if (token.Value is "no")
         {
-            typeStack.Push((DataType.Number, token));
             operations.Add(new Operation(OperationType.PushBool, token, new Meta(Bool: false)));
         }
         else if (token.Value is ":")
@@ -1104,16 +1321,6 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
         }
         else if (token.Value is "?")
         {
-            if (typeStack.Count is 0)
-            {
-                throw new Exception($"`?` expects a value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var (top, topToken) = typeStack.Pop();
-            if (top is not DataType.Number)
-            {
-                throw new Exception($"`?` expects a number on the stack, but got `{top}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
-            }
-
             if (block.NestedBlocks.Count is 0)
             {
                 throw new Exception($"Expected at least one branch block after ?, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
@@ -1126,47 +1333,23 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
                 throw new Exception($"Expected yes: or no: after ?, but got `{firstBranch1Token.Value}` @ {firstBranch1Token.Filename}:{firstBranch1Token.Line}:{firstBranch1Token.Column}");
             }
 
-            var (branch1Program, branch1Stack) = ParseProgram(branch1, new(typeStack), memories, pinnedStackItems);
+            var branch1Program = ParseProgram(branch1, memories, pinnedStackItems);
 
             var endLabel = $"end_if_{token.Line}_{token.Column}";
-            if (block.NestedBlocks.Count is 0)
-            {
-                var (diffResult, stackDump) = typeStack.Diff(branch1Stack);
-                if (diffResult is not TypeStackDiff.Equal)
-                {
-                    throw new Exception($"Single branch `?` block must leave the stack unchanged, but it left it in a different state @ {token.Filename}:{token.Line}:{token.Column}\n{stackDump}");
-                }
-                operations.Add(new Operation(firstBranch1Token.Value is "yes:" ? OperationType.JumpIfZero : OperationType.JumpIfNotZero, token, new Meta(Text: endLabel)));
-                operations.AddRange(branch1Program.Operations);
-                operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
-                typeStack = branch1Stack;
-                continue;
-            }
-
             var expectedBranch2Token = firstBranch1Token.Value is "yes:" ? "no:" : "yes:";
-            var branch2 = block.NestedBlocks.Peek();
-            var firstBranch2Token = branch2.Tokens.Peek();
-            if (firstBranch2Token?.Value != expectedBranch2Token)
+
+            if (block.NestedBlocks.Count is 0 || block.NestedBlocks.Peek().Tokens.Peek().Value != expectedBranch2Token)
             {
                 operations.Add(new Operation(firstBranch1Token.Value is "yes:" ? OperationType.JumpIfZero : OperationType.JumpIfNotZero, token, new Meta(Text: endLabel)));
-                operations.AddRange(branch1Program.Operations);
+                operations.Add(new Operation(OperationType.Branch, token, new Meta(Number: 1)));
+                program.NestedPrograms.Enqueue(branch1Program);
                 operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
-                typeStack = branch1Stack;
                 continue;
             }
-            block.NestedBlocks.Dequeue();
-            var (branch2Program, branch2Stack) = ParseProgram(branch2, new(typeStack), memories, pinnedStackItems);
-            var (diff, msg) = branch1Stack.Diff(branch2Stack);
-            if (diff is TypeStackDiff.SizeDifference)
-            {
-                throw new Exception($"Branches starting at {firstBranch1Token.Filename}:{firstBranch1Token.Line}:{firstBranch1Token.Column} and {firstBranch2Token.Filename}:{firstBranch2Token.Line}:{firstBranch2Token.Column} have different stack sizes.");
-            }
-            else if (diff is TypeStackDiff.TypeDifference)
-            {
-                throw new Exception($"Branches starting at {firstBranch1Token.Filename}:{firstBranch1Token.Line}:{firstBranch1Token.Column} and {firstBranch2Token.Filename}:{firstBranch2Token.Line}:{firstBranch2Token.Column} have diverging stack types:\n{msg}");
-            }
 
-            typeStack = branch2Stack;
+            var branch2 = block.NestedBlocks.Dequeue();
+            var firstBranch2Token = branch2.Tokens.Peek();
+            var branch2Program = ParseProgram(branch2, memories, pinnedStackItems);
 
             ParsedProgram yesBlock;
             ParsedProgram noBlock;
@@ -1188,10 +1371,14 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
             }
             var startYesBlockLabel = $"start_yes_branch_{yesToken.Line}_{yesToken.Column}";
             operations.Add(new Operation(OperationType.JumpIfNotZero, token, new Meta(Text: startYesBlockLabel)));
-            operations.AddRange(noBlock.Operations);
-            operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: endLabel)));
-            operations.Add(new Operation(OperationType.Label, token, new Meta(Text: startYesBlockLabel)));
-            operations.AddRange(yesBlock.Operations);
+            operations.Add(new Operation(OperationType.Branch, token, new Meta(Number: 2)));
+
+            noBlock.Operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: endLabel)));
+            program.NestedPrograms.Enqueue(noBlock);
+
+            yesBlock.Operations.Insert(0, new Operation(OperationType.Label, token, new Meta(Text: startYesBlockLabel)));
+            program.NestedPrograms.Enqueue(yesBlock);
+
             operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
         }
         else if (token.Value is "while")
@@ -1206,27 +1393,14 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
             var whileStartLabel = $"while_{token.Line}_{token.Column}";
             var whileEndLabel = $"end_while_{token.Line}_{token.Column}";
             operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileStartLabel)));
+            operations.Add(new Operation(OperationType.Loop, token));
 
-            var (conditionProgram, conditionStack) = ParseProgram(conditionBlock, new TypeStack(typeStack), memories, pinnedStackItems);
-            if ((conditionStack.Count - typeStack.Count) is not 1)
-            {
-                throw new Exception($"Expected condition to produce a single value, but got {conditionStack.Count - typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            var (top, topToken) = conditionStack.Pop();
-            if (top is not DataType.Number)
-            {
-                throw new Exception($"Expected condition to be a bool, but got {top} from {topToken.Filename}:{topToken.Line}:{topToken.Column}");
-            }
-            operations.AddRange(conditionProgram.Operations);
-            operations.Add(new Operation(OperationType.JumpIfZero, token, new Meta(Text: whileEndLabel)));
+            var conditionProgram = ParseProgram(conditionBlock, memories, pinnedStackItems);
+            conditionProgram.Operations.Add(new Operation(OperationType.JumpIfZero, token, new Meta(Text: whileEndLabel)));
+            program.NestedPrograms.Enqueue(conditionProgram);
 
-            var (whileProgram, whileStack) = ParseProgram(whileBlock, new TypeStack(conditionStack), memories, pinnedStackItems);
-            if (whileStack.Count != typeStack.Count)
-            {
-                throw new Exception($"Expected while block to produce 0 values, but got {whileStack.Count - typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            typeStack = whileStack;
-            operations.AddRange(whileProgram.Operations);
+            var whileProgram = ParseProgram(whileBlock, memories, pinnedStackItems);
+            program.NestedPrograms.Enqueue(whileProgram);
             operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: whileStartLabel)));
             operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileEndLabel)));
         }
@@ -1260,27 +1434,26 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
                 throw new Exception($"Expected at least one assignment, but got none @ {token.Filename}:{token.Line}:{token.Column}");
             }
 
-            pinnedStackItems ??= new Dictionary<string, (DataType, Token)>();
+            pinnedStackItems ??= new Dictionary<string, Token>();
             for (var i = assignments.Count - 1; i >= 0; i--)
             {
-                if (!pinnedStackItems.TryAdd(assignments[i].Value, (typeStack.Pop().Item1, assignments[i])))
+                if (!pinnedStackItems.TryAdd(assignments[i].Value, assignments[i]))
                 {
-                    var (_, existing) = pinnedStackItems[assignments[i].Value];
+                    var existing = pinnedStackItems[assignments[i].Value];
                     throw new Exception($"Cannot pin {assignments[i]} because it is already pinned @ {existing.Filename}:{existing.Line}:{existing.Column}");
                 };
-                operations.Add(new Operation(OperationType.PinStackElement, assignments[i], new Meta(Text: assignments[i].Value)));
+                operations.Add(new Operation(OperationType.PinStackElement, assignments[i]));
             }
-
+            operations.Add(new Operation(OperationType.UsingBlock, token));
             var consumingBlock = block.NestedBlocks.Dequeue();
+            var consumingProgram = ParseProgram(consumingBlock, memories, pinnedStackItems);
+            program.NestedPrograms.Enqueue(consumingProgram);
 
-            var (consumingProgram, consumingStack) = ParseProgram(consumingBlock, new TypeStack(typeStack), memories, pinnedStackItems);
-            operations.AddRange(consumingProgram.Operations);
             foreach (var assignment in assignments)
             {
                 operations.Add(new Operation(OperationType.UnpinStackElement, assignment));
                 pinnedStackItems.Remove(assignment.Value);
             }
-            typeStack = consumingStack;
         }
         else
         {
@@ -1288,7 +1461,7 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
         }
     }
 
-    return (new ParsedProgram(operations), typeStack);
+    return program;
 
     bool IsString(Token token, out string value)
     {
@@ -1314,58 +1487,10 @@ static (ParsedProgram, TypeStack) ParseProgram(Block block, TypeStack typeStack,
 
     void ParseOperator(Token token, Operator operatorType)
     {
-        if (typeStack.Count is 0)
-        {
-            throw new Exception($"`{token.Value}` expected number on stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-        }
-
         var nextToken = GetNextToken($"Expected number after `{token.Value}`, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-
-        var (prasedImmediate, immediateStack) = ParseProgram(new Block(new Queue<Token>(new[] { nextToken }), new(), block.Functions), new(typeStack), memories, pinnedStackItems);
-        if (immediateStack.Count - typeStack.Count is not 1)
-        {
-            throw new Exception($"Expected immediate to produce a single value, but got {immediateStack.Count - typeStack.Count} @ {token.Filename}:{token.Line}:{token.Column}");
-        }
-
+        var prasedImmediate = ParseProgram(new Block(new Queue<Token>(new[] { nextToken }), new(), block.Functions), memories, pinnedStackItems);
         operations.AddRange(prasedImmediate.Operations);
         operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: operatorType)));
-
-        var (immediateType, _) = immediateStack.Pop();
-        var (type, _) = typeStack.Pop();
-
-        if (operatorType is Operator.Add)
-        {
-            if (type is DataType.Pointer && immediateType is DataType.Pointer)
-            {
-                throw new Exception($"Pointer + Pointer is not allowed @ {token.Filename}:{token.Line}:{token.Column}");
-            }
-            if (type is DataType.Pointer || immediateType is DataType.Pointer)
-            {
-                typeStack.Push((DataType.Pointer, token));
-                return;
-            }
-        }
-        else if (operatorType is Operator.Subtract)
-        {
-            if (type is DataType.Pointer && immediateType is DataType.Pointer)
-            {
-                // NOTE: pointer - pointer is a number, and not a pointer
-                typeStack.Push((DataType.Number, token));
-                return;
-            }
-            else if (type is DataType.Pointer || immediateType is DataType.Pointer)
-            {
-                typeStack.Push((DataType.Pointer, token));
-                return;
-            }
-        }
-
-        if (type is DataType.Pointer || immediateType is DataType.Pointer)
-        {
-            throw new Exception($"`{token.Value}` is not allowed on pointers @ {token.Filename}:{token.Line}:{token.Column}");
-        }
-
-        typeStack.Push((DataType.Number, token));
     }
 
     Token GetNextToken(string failedMessage)
@@ -1508,16 +1633,17 @@ enum OperationType
     PushMemory,
     StoreMemory,
     LoadMemory,
+    Branch,
+    Loop
 }
 
-record Meta(int? Number = null, string? Text = null, Operator? Operator = null, bool? Bool = null);
+record Meta(int? Number = null, string? Text = null, Operator? Operator = null, bool? Bool = null, DataType? Type = null);
 
 record Operation(OperationType Type, Token Token, Meta? Data = null);
 
-record ParsedProgram(List<Operation> Operations);
+record ParsedProgram(List<Operation> Operations, Queue<ParsedProgram> NestedPrograms);
 
 record Block(Queue<Token> Tokens, Queue<Block> NestedBlocks, Dictionary<string, Block> Functions);
-
 class TypeStack : Stack<(DataType, Token)>
 {
     public TypeStack() : base() { }
