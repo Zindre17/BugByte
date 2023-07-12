@@ -1111,6 +1111,7 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
         "==",
         "using",
     };
+    var inclusions = new Dictionary<string, Token>();
     var operations = new List<Operation>();
     var tokens = block.Tokens;
     var program = new ParsedProgram(operations, new());
@@ -1453,6 +1454,33 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
             {
                 operations.Add(new Operation(OperationType.UnpinStackElement, assignment));
                 pinnedStackItems.Remove(assignment.Value);
+            }
+        }
+        else if (token.Value is "include")
+        {
+            var includePath = block.Tokens.Dequeue();
+            if (!IsString(includePath, out var path))
+            {
+                throw new Exception($"Expected string after include, but got {includePath} @ {includePath.Filename}:{includePath.Line}:{includePath.Column}");
+            }
+            var fullPath = Path.GetFullPath(path);
+            Console.WriteLine($"Including {fullPath}");
+            if (inclusions.TryGetValue(fullPath, out var existingInclude))
+            {
+                throw new Exception($"Cannot include {path} because it is already included at {existingInclude}.");
+            }
+            inclusions.Add(fullPath, includePath);
+            var words = LexProgram(path);
+            var blocks = GroupBlock(null, words, new());
+
+            // Extract only functions for now
+            foreach (var (key, function) in blocks.Functions)
+            {
+                if (block.Functions.ContainsKey(key))
+                {
+                    continue;
+                }
+                block.Functions.Add(key, function);
             }
         }
         else

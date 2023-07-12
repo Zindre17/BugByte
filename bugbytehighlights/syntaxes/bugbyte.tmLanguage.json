@@ -67,6 +67,10 @@
 		"constants": {
 			"patterns": [
 				{
+					"name": "keyword.other.include.bugbyte",
+					"match": "\\b(include)\\b"
+				},
+				{
 					"name": "constant.language.bugbyte",
 					"match": "\\b(dup|drop|over|swap|print|prints|store|load)\\b"
 				},
