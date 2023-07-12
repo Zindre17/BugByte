@@ -10,9 +10,20 @@
 		},
 		{
 			"include": "#constants"
+		},
+		{
+			"include": "#comments"
 		}
 	],
 	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.number-sign.bugbyte",
+					"match": "\\#.*$"
+				}
+			]
+		},
 		"keywords": {
 			"patterns": [
 				{

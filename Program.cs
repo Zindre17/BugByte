@@ -1544,6 +1544,10 @@ static Queue<Token> LexProgram(string filename)
         while (remainingLine.Length > 0)
         {
             string word;
+            if (remainingLine.StartsWith("#"))
+            {
+                break;
+            }
             if (remainingLine.StartsWith('"') || remainingLine.StartsWith("0\""))
             {
                 var endQuoteIndex = remainingLine.IndexOf('"', remainingLine.StartsWith("\"") ? 1 : 2);
