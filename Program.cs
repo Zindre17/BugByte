@@ -82,6 +82,10 @@ static ParsedProgram FlattenProgram(ParsedProgram program)
         {
             flattenedProgram.Operations.AddRange(FlattenProgram(program.NestedPrograms.Dequeue()).Operations);
         }
+        else if (operation.Type is OperationType.Inline)
+        {
+            flattenedProgram.Operations.AddRange(FlattenProgram(program.NestedPrograms.Dequeue()).Operations);
+        }
         else
         {
             flattenedProgram.Operations.Add(operation);
@@ -1073,6 +1077,12 @@ static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Di
             var usingStack = TypeCheckProgram(usingBlock, new(typeStack), pinnedStackItems);
             typeStack = usingStack;
         }
+        else if (operation.Type is OperationType.Inline)
+        {
+            var functionBlock = program.NestedPrograms.ElementAt(nestedIndex++);
+            var functionStack = TypeCheckProgram(functionBlock, new(typeStack), pinnedStackItems);
+            typeStack = functionStack;
+        }
         else
         {
             throw new Exception($"Unknown operation `{operation.Type}` @ {token.Filename}:{token.Line}:{token.Column}");
@@ -1125,7 +1135,8 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
         else if (block.Functions.TryGetValue(token.Value, out var functionBlock))
         {
             var parsedFunction = ParseProgram(functionBlock, new());
-            operations.AddRange(parsedFunction.Operations);
+            program.NestedPrograms.Enqueue(parsedFunction);
+            operations.Add(new Operation(OperationType.Inline, token));
         }
         else if (memories.ContainsKey(token.Value))
         {
@@ -1666,7 +1677,8 @@ enum OperationType
     StoreMemory,
     LoadMemory,
     Branch,
-    Loop
+    Loop,
+    Inline,
 }
 
 record Meta(int? Number = null, string? Text = null, Operator? Operator = null, bool? Bool = null, DataType? Type = null);
