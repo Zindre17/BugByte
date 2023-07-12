@@ -92,6 +92,17 @@
 				{
 					"name": "constant.other",
 					"match": "\\b(yes|no)(?!:)\\b"
+				},
+				{
+					"match": "\\b(aka)(\\s+([\\w\\-\\_]+)\\b)?",
+					"captures": {
+						"1": {
+							"name": "keyword.other.aka.bugbyte"
+						},
+						"3": {
+							"name": "variable.name.constant.bugbyte"
+						}
+					}
 				}
 			]
 		},

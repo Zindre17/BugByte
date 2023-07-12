@@ -1494,6 +1494,35 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
                 block.Functions.Add(key, function);
             }
         }
+        else if (token.Value is "aka")
+        {
+            if (tokens.Count < 2)
+            {
+                throw new Exception($"Expected at least two tokens after `aka`, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var name = block.Tokens.Dequeue();
+            if (keywords.Contains(name.Value))
+            {
+                throw new Exception($"Expected identifier, but got an existing keyword {token}.");
+            }
+            var constant = block.Tokens.Dequeue();
+            if (int.TryParse(constant.Value, out var constInt))
+            {
+
+            }
+            else if (IsString(constant, out var constString))
+            {
+
+            }
+            else if (IsZeroTerminatedString(constant, out var constZeroString))
+            {
+
+            }
+            else
+            {
+                throw new Exception($"Expected number after `aka`, but got {constant} @ {constant.Filename}:{constant.Line}:{constant.Column}");
+            }
+        }
         else
         {
             throw new Exception($"Unknown token {token}");
