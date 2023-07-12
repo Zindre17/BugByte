@@ -1715,6 +1715,16 @@ class TypeStack : Stack<(DataType, Token)>
         }
         return (result, result is TypeStackDiff.Equal ? null : stringBuilder.ToString());
     }
+
+    public override string ToString()
+    {
+        var stringBuilder = new StringBuilder();
+        foreach (var (type, token) in this)
+        {
+            stringBuilder.AppendLine($"{type} ({token.Filename}:{token.Line}:{token.Column})");
+        }
+        return stringBuilder.ToString();
+    }
 }
 
 enum TypeStackDiff
