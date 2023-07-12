@@ -27,7 +27,8 @@ try
     }
     var flattendProgram = FlattenProgram(program);
     var assembly = GenerateAssembly(flattendProgram);
-    File.WriteAllLines($"{fileName.Split(".")[0]}.asm", assembly);
+    Directory.CreateDirectory(Directory.GetParent($"./output/{fileName.Split(".")[0]}")?.FullName ?? throw new Exception("Failed to create output directory."));
+    File.WriteAllLines($"./output/{fileName.Split(".")[0]}.asm", assembly);
 }
 catch (Exception e)
 {
@@ -40,8 +41,7 @@ catch (Exception e)
 
 Console.WriteLine("Compiled successfully.");
 
-var fileNameWithoutExtension = fileName.Split(".")[0];
-
+var fileNameWithoutExtension = "./output/" + fileName.Split(".")[0];
 if (!RunExternalCommand("fasm", $"{fileNameWithoutExtension}.asm {fileNameWithoutExtension}"))
 {
     Console.ForegroundColor = ConsoleColor.Red;
