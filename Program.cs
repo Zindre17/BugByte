@@ -556,8 +556,8 @@ static List<string> GenerateAssembly(ParsedProgram program)
         else if (operation.Type is OperationType.StoreMemory)
         {
             assembly.Add(";-- store memory --");
-            assembly.Add("  pop rax");
             assembly.Add("  pop rbx");
+            assembly.Add("  pop rax");
             assembly.Add("  mov [rbx], rax");
         }
         else if (operation.Type is OperationType.LoadMemory)
@@ -953,9 +953,9 @@ static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Di
             }
             var (top, topToken) = typeStack.Pop();
             var (nextTop, nextTopToken) = typeStack.Pop();
-            if (nextTop is not DataType.Pointer)
+            if (top is not DataType.Pointer)
             {
-                throw new Exception($"{operation.Type} expects a pointer as second element ont the stack, but got `{nextTop}` @ {nextTopToken.Filename}:{nextTopToken.Line}:{nextTopToken.Column}");
+                throw new Exception($"{operation.Type} expects a pointer as second element ont the stack, but got {top}");
             }
         }
         else if (operation.Type is OperationType.LoadMemory)
