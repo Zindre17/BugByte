@@ -567,6 +567,14 @@ static List<string> GenerateAssembly(ParsedProgram program)
             assembly.Add($"  mov rax, [rax]");
             assembly.Add($"  push rax");
         }
+        else if (operation.Type is OperationType.LoadByte)
+        {
+            assembly.Add($";-- load byte --");
+            assembly.Add($"  pop rbx");
+            assembly.Add($"  xor rax, rax");
+            assembly.Add($"  mov al, BYTE [rbx]");
+            assembly.Add($"  push rax");
+        }
         else if (operation.Type is OperationType.Syscall)
         {
             var version = operation.Data?.Number
@@ -972,6 +980,20 @@ static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Di
             // TODO: replace this with the actual type if possible
             typeStack.Push((DataType.Number, token));
         }
+        else if (operation.Type is OperationType.LoadByte)
+        {
+            if (typeStack.Count is 0)
+            {
+                throw new Exception($"{operation.Type} expects at least one value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            if (top is not DataType.Pointer)
+            {
+                throw new Exception($"{operation.Type} expects pointer on top of stack, but got `{top}` @ {topToken.Filename}:{topToken.Line}:{topToken.Column}");
+            }
+            // TODO: replace this with the actual type if possible
+            typeStack.Push((DataType.Number, token));
+        }
         else if (operation.Type is OperationType.Syscall)
         {
             var arguments = operation.Data?.Number ??
@@ -1268,6 +1290,10 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
         else if (token.Value is "load")
         {
             operations.Add(new Operation(OperationType.LoadMemory, token));
+        }
+        else if (token.Value is "load-byte")
+        {
+            operations.Add(new Operation(OperationType.LoadByte, token));
         }
         else if (token.Value is "syscall0")
         {
@@ -1676,6 +1702,7 @@ enum OperationType
     PushMemory,
     StoreMemory,
     LoadMemory,
+    LoadByte,
     Branch,
     Loop,
     Inline,
