@@ -575,6 +575,10 @@ static List<string> GenerateAssembly(ParsedProgram program)
             assembly.Add($"  mov al, BYTE [rbx]");
             assembly.Add($"  push rax");
         }
+        else if (operation.Type is OperationType.Cast)
+        {
+
+        }
         else if (operation.Type is OperationType.Syscall)
         {
             var version = operation.Data?.Number
@@ -994,6 +998,16 @@ static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Di
             // TODO: replace this with the actual type if possible
             typeStack.Push((DataType.Number, token));
         }
+        else if (operation.Type is OperationType.Cast)
+        {
+            var type = operation.Data?.Type ?? throw new Exception($"{operation.Type} expects type as metadata. Probably a bug in the parser. @ {token.Filename}:{token.Line}:{token.Column}");
+            if (typeStack.Count is 0)
+            {
+                throw new Exception($"{operation.Type} expects at least one value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            typeStack.Pop();
+            typeStack.Push((type, token));
+        }
         else if (operation.Type is OperationType.Syscall)
         {
             var arguments = operation.Data?.Number ??
@@ -1294,6 +1308,10 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
         else if (token.Value is "load-byte")
         {
             operations.Add(new Operation(OperationType.LoadByte, token));
+        }
+        else if (token.Value is "(ptr)")
+        {
+            operations.Add(new Operation(OperationType.Cast, token, new Meta(Type: DataType.Pointer)));
         }
         else if (token.Value is "syscall0")
         {
@@ -1703,6 +1721,7 @@ enum OperationType
     StoreMemory,
     LoadMemory,
     LoadByte,
+    Cast,
     Branch,
     Loop,
     Inline,
