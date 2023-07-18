@@ -1119,6 +1119,11 @@ static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Di
             var functionStack = TypeCheckProgram(functionBlock, new(typeStack), pinnedStackItems);
             typeStack = functionStack;
         }
+        else if (operation.Type is OperationType.Inspect)
+        {
+            Console.WriteLine(typeStack);
+            break;
+        }
         else
         {
             throw new Exception($"Unknown operation `{operation.Type}` @ {token.Filename}:{token.Line}:{token.Column}");
@@ -1538,6 +1543,10 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
                 block.Functions.Add(key, function);
             }
         }
+        else if (token.Value is "inspect")
+        {
+            operations.Add(new Operation(OperationType.Inspect, token));
+        }
         else
         {
             throw new Exception($"Unknown token {token}");
@@ -1725,6 +1734,7 @@ enum OperationType
     Branch,
     Loop,
     Inline,
+    Inspect,
 }
 
 record Meta(int? Number = null, string? Text = null, Operator? Operator = null, bool? Bool = null, DataType? Type = null);
