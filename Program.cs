@@ -1213,23 +1213,10 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
         }
         else if (token.Value is "==")
         {
-            var nextToken = GetNextToken($"Expected string literal after `==`, but got nothing.");
-            if (!IsString(nextToken, out var str))
-            {
-                throw new Exception($"Expected string literal after `==`, but got {nextToken}");
-            }
-            operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: str)));
             operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: Operator.StringEqual)));
         }
         else if (token.Value is "!==")
         {
-            var nextToken = GetNextToken($"Expected string literal after `!==`, but got nothing.");
-            if (!IsString(nextToken, out var str))
-            {
-                throw new Exception($"Expected string literal after `!==`, but got {nextToken}");
-            }
-
-            operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: str)));
             operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: Operator.StringEqual)));
             operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: Operator.Not)));
         }
@@ -1579,9 +1566,6 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
 
     void ParseOperator(Token token, Operator operatorType)
     {
-        var nextToken = GetNextToken($"Expected number after `{token.Value}`, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-        var prasedImmediate = ParseProgram(new Block(new Queue<Token>(new[] { nextToken }), new(), block.Functions), memories, pinnedStackItems);
-        operations.AddRange(prasedImmediate.Operations);
         operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: operatorType)));
     }
 
