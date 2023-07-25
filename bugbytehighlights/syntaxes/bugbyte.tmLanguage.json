@@ -83,7 +83,7 @@
 				},
 				{
 					"name": "constant.language.bugbyte",
-					"match": "\\b(dup|drop|over|swap|print|prints|store|load)\\b"
+					"match": "\\b(dup|drop|over|swap|print|prints|store|load(\\-byte)?)\\b"
 				},
 				{
 					"name": "constant.numeric.bugbyte",
