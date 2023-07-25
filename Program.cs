@@ -62,7 +62,7 @@ RunExternalCommand($"./{fileNameWithoutExtension}", "", false);
 
 static ParsedProgram FlattenProgram(ParsedProgram program)
 {
-    var flattenedProgram = new ParsedProgram(new(), new());
+    var flattenedProgram = new ParsedProgram(new(), new(), new());
     foreach (var operation in program.Operations)
     {
         if (operation.Type is OperationType.Loop)
@@ -1134,7 +1134,7 @@ static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Di
 
 // TODO: Allocate memory relative to the current scope from a pool
 // TODO: Deallocate memory at the end of scope
-static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memories, Dictionary<string, Token>? pinnedStackItems = null)
+static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memories, Dictionary<string, Constant> constants, Dictionary<string, Token>? pinnedStackItems = null)
 {
     var keywords = new string[]
     {
@@ -1165,7 +1165,7 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
     var inclusions = new Dictionary<string, Token>();
     var operations = new List<Operation>();
     var tokens = block.Tokens;
-    var program = new ParsedProgram(operations, new());
+    var program = new ParsedProgram(operations, new(), constants);
     while (tokens.Count > 0)
     {
         var token = tokens.Dequeue();
@@ -1175,13 +1175,32 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
         }
         else if (block.Functions.TryGetValue(token.Value, out var functionBlock))
         {
-            var parsedFunction = ParseProgram(functionBlock, new());
+            var parsedFunction = ParseProgram(functionBlock, new(), constants);
             program.NestedPrograms.Enqueue(parsedFunction);
             operations.Add(new Operation(OperationType.Inline, token));
         }
         else if (memories.ContainsKey(token.Value))
         {
             operations.Add(new Operation(OperationType.PushMemory, token, new Meta(Text: token.Value)));
+        }
+        else if (constants.TryGetValue(token.Value, out var constant1))
+        {
+            if (constant1.Type is DataType.Number)
+            {
+                operations.Add(new Operation(OperationType.PushNumber, token, new Meta(Number: constant1.Number)));
+            }
+            else if (constant1.Type is DataType.ZeroTerminatedString)
+            {
+                operations.Add(new Operation(OperationType.PushZeroString, token, new Meta(Text: constant1.Text)));
+            }
+            else if (constant1.Type is DataType.String)
+            {
+                operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: constant1.Text)));
+            }
+            else
+            {
+                throw new Exception($"Unknown constant type {constant1.Type} from {token}.");
+            }
         }
         else if (int.TryParse(token.Value, out var value))
         {
@@ -1381,7 +1400,7 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
                 throw new Exception($"Expected yes: or no: after ?, but got `{firstBranch1Token.Value}` @ {firstBranch1Token.Filename}:{firstBranch1Token.Line}:{firstBranch1Token.Column}");
             }
 
-            var branch1Program = ParseProgram(branch1, memories, pinnedStackItems);
+            var branch1Program = ParseProgram(branch1, memories, constants, pinnedStackItems);
 
             var endLabel = $"end_if_{token.Line}_{token.Column}";
             var expectedBranch2Token = firstBranch1Token.Value is "yes:" ? "no:" : "yes:";
@@ -1397,7 +1416,7 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
 
             var branch2 = block.NestedBlocks.Dequeue();
             var firstBranch2Token = branch2.Tokens.Peek();
-            var branch2Program = ParseProgram(branch2, memories, pinnedStackItems);
+            var branch2Program = ParseProgram(branch2, memories, constants, pinnedStackItems);
 
             ParsedProgram yesBlock;
             ParsedProgram noBlock;
@@ -1443,11 +1462,11 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
             operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileStartLabel)));
             operations.Add(new Operation(OperationType.Loop, token));
 
-            var conditionProgram = ParseProgram(conditionBlock, memories, pinnedStackItems);
+            var conditionProgram = ParseProgram(conditionBlock, memories, constants, pinnedStackItems);
             conditionProgram.Operations.Add(new Operation(OperationType.JumpIfZero, token, new Meta(Text: whileEndLabel)));
             program.NestedPrograms.Enqueue(conditionProgram);
 
-            var whileProgram = ParseProgram(whileBlock, memories, pinnedStackItems);
+            var whileProgram = ParseProgram(whileBlock, memories, constants, pinnedStackItems);
             program.NestedPrograms.Enqueue(whileProgram);
             operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: whileStartLabel)));
             operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileEndLabel)));
@@ -1494,7 +1513,7 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
             }
             operations.Add(new Operation(OperationType.UsingBlock, token));
             var consumingBlock = block.NestedBlocks.Dequeue();
-            var consumingProgram = ParseProgram(consumingBlock, memories, pinnedStackItems);
+            var consumingProgram = ParseProgram(consumingBlock, memories, constants, pinnedStackItems);
             program.NestedPrograms.Enqueue(consumingProgram);
 
             foreach (var assignment in assignments)
@@ -1533,6 +1552,35 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
         else if (token.Value is "inspect")
         {
             operations.Add(new Operation(OperationType.Inspect, token));
+        }
+        else if (token.Value is "aka")
+        {
+            if (tokens.Count < 2)
+            {
+                throw new Exception($"Expected at least two tokens after `aka`, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var name = block.Tokens.Dequeue();
+            if (keywords.Contains(name.Value))
+            {
+                throw new Exception($"Expected identifier, but got an existing keyword {token}.");
+            }
+            var constant = block.Tokens.Dequeue();
+            if (int.TryParse(constant.Value, out var constInt))
+            {
+                program.Constants.Add(name.Value, new(DataType.Number, Number: constInt));
+            }
+            else if (IsString(constant, out var constString))
+            {
+                program.Constants.Add(name.Value, new(DataType.String, Text: constString));
+            }
+            else if (IsZeroTerminatedString(constant, out var constZeroString))
+            {
+                program.Constants.Add(name.Value, new(DataType.ZeroTerminatedString, Text: constZeroString));
+            }
+            else
+            {
+                throw new Exception($"Expected number after `aka`, but got {constant} @ {constant.Filename}:{constant.Line}:{constant.Column}");
+            }
         }
         else
         {
@@ -1661,6 +1709,8 @@ enum DataType
 {
     Number,
     Pointer,
+    String,
+    ZeroTerminatedString,
 }
 
 record Token(string Filename, string Value, int Line, int Column)
@@ -1725,7 +1775,9 @@ record Meta(int? Number = null, string? Text = null, Operator? Operator = null, 
 
 record Operation(OperationType Type, Token Token, Meta? Data = null);
 
-record ParsedProgram(List<Operation> Operations, Queue<ParsedProgram> NestedPrograms);
+record Constant(DataType Type, int? Number = null, string? Text = null);
+
+record ParsedProgram(List<Operation> Operations, Queue<ParsedProgram> NestedPrograms, Dictionary<string, Constant> Constants);
 
 record Block(Queue<Token> Tokens, Queue<Block> NestedBlocks, Dictionary<string, Block> Functions);
 class TypeStack : Stack<(DataType, Token)>
