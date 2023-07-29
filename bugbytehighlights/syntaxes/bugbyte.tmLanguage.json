@@ -32,7 +32,7 @@
 				},
 				{
 					"name": "keyword.operator.arithmetic.bugbyte",
-					"match": "(?<!\\S)(\\+|\\-|\\*|\\/|\\%)(?!\\S)"
+					"match": "(?<!\\S)(\\+|\\-|\\*|\\/|\\%|\\^|\\||\\&)(?!\\S)"
 				},
 				{
 					"name": "keyword.operator.comparison.bugbyte",

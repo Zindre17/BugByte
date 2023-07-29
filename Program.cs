@@ -440,6 +440,30 @@ static List<string> GenerateAssembly(ParsedProgram program)
                 assembly.Add($"  div rbx");
                 assembly.Add($"  push rdx");
             }
+            else if (op is Operator.Xor)
+            {
+                assembly.Add(";-- xor --");
+                assembly.Add($"  pop rbx");
+                assembly.Add($"  pop rax");
+                assembly.Add($"  xor rax, rbx");
+                assembly.Add($"  push rax");
+            }
+            else if (op is Operator.Or)
+            {
+                assembly.Add(";-- or --");
+                assembly.Add($"  pop rbx");
+                assembly.Add($"  pop rax");
+                assembly.Add($"  or rax, rbx");
+                assembly.Add($"  push rax");
+            }
+            else if (op is Operator.And)
+            {
+                assembly.Add(";-- and --");
+                assembly.Add($"  pop rbx");
+                assembly.Add($"  pop rax");
+                assembly.Add($"  and rax, rbx");
+                assembly.Add($"  push rax");
+            }
             else if (op is Operator.Not)
             {
                 assembly.Add(";-- not --");
@@ -946,7 +970,7 @@ static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Di
                     typeStack.Push((DataType.Number, token));
                 }
             }
-            else if (op is Operator.Multiply or Operator.Divide or Operator.Modulo)
+            else if (op is Operator.Multiply or Operator.Divide or Operator.Modulo or Operator.And or Operator.Or or Operator.Xor)
             {
                 var (top, topToken) = typeStack.Pop();
                 var (nextTop, nextTopToken) = typeStack.Pop();
@@ -955,6 +979,10 @@ static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Di
                     throw new Exception($"Operator `{op}` does not support pointers @ {token.Filename}:{token.Line}:{token.Column}");
                 }
                 typeStack.Push((DataType.Number, token));
+            }
+            else
+            {
+                throw new Exception($"Unknown operator {op} {token}");
             }
         }
         else if (operation.Type is OperationType.StoreMemory)
@@ -1225,6 +1253,18 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
         else if (token.Value is "%")
         {
             ParseOperator(token, Operator.Modulo);
+        }
+        else if (token.Value is "^")
+        {
+            ParseOperator(token, Operator.Xor);
+        }
+        else if (token.Value is "|")
+        {
+            ParseOperator(token, Operator.Or);
+        }
+        else if (token.Value is "&")
+        {
+            ParseOperator(token, Operator.And);
         }
         else if (token.Value is "=")
         {
@@ -1727,6 +1767,10 @@ enum Operator
     Modulo,
 
     Not,
+
+    And,
+    Or,
+    Xor,
 
     Equal,
     NotEqual,
