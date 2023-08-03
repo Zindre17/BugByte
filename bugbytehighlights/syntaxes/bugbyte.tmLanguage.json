@@ -107,6 +107,17 @@
 							"name": "variable.name.constant.bugbyte"
 						}
 					}
+				},
+				{
+					"match": "\\b(struct)(\\s+([\\w\\-\\_]+)\\b)?",
+					"captures": {
+						"1": {
+							"name": "keyword.other.aka.bugbyte"
+						},
+						"3": {
+							"name": "variable.name.constant.bugbyte"
+						}
+					}
 				}
 			]
 		},
