@@ -31,6 +31,10 @@
 					"match": "\\b(while)\\b"
 				},
 				{
+					"name": "keyword.control.exit.bugbyte",
+					"match": "\\b(exit)\\b"
+				},
+				{
 					"name": "keyword.operator.arithmetic.bugbyte",
 					"match": "(?<!\\S)(\\+|\\-|\\*|\\/|\\%|\\^|\\||\\&)(?!\\S)"
 				},

@@ -58,7 +58,7 @@ if (!RunExternalCommand("chmod", $"+x {fileNameWithoutExtension}"))
     Environment.Exit(1);
 }
 
-RunExternalCommand($"./{fileNameWithoutExtension}", "", false);
+RunExternalCommand($"./{fileNameWithoutExtension}", "");
 
 static ParsedProgram FlattenProgram(ParsedProgram program)
 {
@@ -271,6 +271,10 @@ static bool RunExternalCommand(string command, string arguments, bool printInfo 
     };
     try
     {
+        if (printInfo)
+        {
+            Console.WriteLine($"\nRunning command: {command} {arguments}");
+        }
         var process = Process.Start(startInfo);
         if (process is null)
         {
@@ -282,17 +286,13 @@ static bool RunExternalCommand(string command, string arguments, bool printInfo 
             }
             return false;
         }
-        if (printInfo)
-        {
-            Console.WriteLine($"Running command: {command} {arguments}");
-        }
         process.WaitForExit();
         if (process.ExitCode is not 0)
         {
             if (printInfo)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.Error.WriteLine($"Command failed. Error({process.ExitCode}): {process.StandardError.ReadToEnd()}");
+                Console.Error.WriteLine($"Command failed. Error({(sbyte)process.ExitCode})");
                 Console.ResetColor();
             }
             return false;
@@ -784,6 +784,13 @@ static List<string> GenerateAssembly(ParsedProgram program)
             assembly.Add(";-- unpin stack element --");
             assembly.Add($"  sub r15, 8");
         }
+        else if (operation.Type is OperationType.Exit)
+        {
+            assembly.Add($";-- exit --");
+            assembly.Add($"  pop rdi");
+            assembly.Add($"  mov rax, 60");
+            assembly.Add($"  syscall");
+        }
         else
         {
             throw new Exception($"Unknown operation `{operation.Type}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
@@ -1236,6 +1243,18 @@ static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Di
         {
             Console.WriteLine(typeStack);
             break;
+        }
+        else if (operation.Type is OperationType.Exit)
+        {
+            if (typeStack.Count is 0)
+            {
+                throw new Exception($"Exit expects a value on the stack @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var (top, topToken) = typeStack.Pop();
+            if (top is not DataType.Number)
+            {
+                throw new Exception($"Exit expects a number on top of the stack, but got {topToken}");
+            }
         }
         else
         {
@@ -1693,6 +1712,10 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
         {
             throw new Exception("Constants should have been parsed by now.");
         }
+        else if (token.Value is "exit")
+        {
+            operations.Add(new Operation(OperationType.Exit, token));
+        }
         else
         {
             throw new Exception($"Unknown token {token}");
@@ -1935,6 +1958,7 @@ enum OperationType
     Loop,
     Inline,
     Inspect,
+    Exit,
 }
 
 record Meta(int? Number = null, string? Text = null, Operator? Operator = null, bool? Bool = null, DataType? Type = null);
