@@ -986,27 +986,27 @@ static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Di
             {
                 if (typeStack.Count < 4)
                 {
-                    throw new Exception($"Operator {op} expects at least 4 elements on the stack, but got {typeStack.Count}.");
+                    throw new Exception($"Operator {op} expects at least 4 elements on the stack, but got {typeStack.Count} at {token}.");
                 }
                 var (type1, _) = typeStack.Pop();
                 if (type1 is not DataType.Pointer)
                 {
-                    throw new Exception($"Operator {op} expects a pointer to a string on top of the stack, but got {type1}.");
+                    throw new Exception($"Operator {op} expects a pointer to a string on top of the stack, but got {type1} at {token}.");
                 }
                 var (type2, _) = typeStack.Pop();
                 if (type2 is not DataType.Number)
                 {
-                    throw new Exception($"Operator {op} expects a number as the second element on the stack, but got {type2}.");
+                    throw new Exception($"Operator {op} expects a number as the second element on the stack, but got {type2} at {token}.");
                 }
                 var (type3, _) = typeStack.Pop();
                 if (type3 is not DataType.Pointer)
                 {
-                    throw new Exception($"Operator {op} expects a pointer to a string as the third element on the stack, but got {type3}.");
+                    throw new Exception($"Operator {op} expects a pointer to a string as the third element on the stack, but got {type3} at {token}.");
                 }
                 var (type4, _) = typeStack.Pop();
                 if (type4 is not DataType.Number)
                 {
-                    throw new Exception($"Operator {op} expects a number as the fourth element on the stack, but got {type4}.");
+                    throw new Exception($"Operator {op} expects a number as the fourth element on the stack, but got {type4} at {token}.");
                 }
                 // TODO: replace with a new type for booleans
                 typeStack.Push((DataType.Number, token));
