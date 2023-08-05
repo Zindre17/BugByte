@@ -8,6 +8,9 @@ lines get-lines
 alloc[8] sum
 0 sum store
 
+alloc[8] sum2
+0 sum2 store
+
 using line-count:
     0
     while dup line-count < :
@@ -27,9 +30,33 @@ using line-count:
         1 +
     ;
     drop
+    
+    0
+    while dup line-count < :
+        using index:
+            index 0 + 16 *     lines + load
+            index 0 + 16 * 8 + lines + load (ptr)
+            index 1 + 16 *     lines + load
+            index 1 + 16 * 8 + lines + load (ptr)
+            index 2 + 16 *     lines + load
+            index 2 + 16 * 8 + lines + load (ptr)
+            using size1 ptr1 size2 ptr2 size3 ptr3:
+                size1 ptr1 get-items-bitwise 
+                size2 ptr2 get-items-bitwise 
+                size3 ptr3 get-items-bitwise 
+                &
+                &
+                get-priority-sum 
+                sum2 load + sum2 store
+            ;
+            index 3 +
+        ;
+    ;
+    drop
 ;
 
 "part1: " prints sum load print
+"part2: " prints sum2 load print
 
 # size ptr -> number
 get-items-bitwise():
