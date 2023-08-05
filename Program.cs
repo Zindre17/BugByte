@@ -625,6 +625,22 @@ static List<string> GenerateAssembly(ParsedProgram program)
                 assembly.Add($"  cmovge rdx, rcx");
                 assembly.Add($"  push rdx");
             }
+            else if (op is Operator.LeftShift)
+            {
+                assembly.Add(";-- left shift --");
+                assembly.Add($"  pop rcx");
+                assembly.Add($"  pop rax");
+                assembly.Add($"  shl rax, cl");
+                assembly.Add($"  push rax");
+            }
+            else if (op is Operator.RightShift)
+            {
+                assembly.Add(";-- right shift --");
+                assembly.Add($"  pop rcx");
+                assembly.Add($"  pop rax");
+                assembly.Add($"  shr rax, cl");
+                assembly.Add($"  push rax");
+            }
             else
             {
                 throw new Exception($"Unknown operator {op} `{operation.Token.Value}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
@@ -1062,7 +1078,7 @@ static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Di
                     typeStack.Push((DataType.Number, token));
                 }
             }
-            else if (op is Operator.Multiply or Operator.Divide or Operator.Modulo or Operator.And or Operator.Or or Operator.Xor)
+            else if (op is Operator.Multiply or Operator.Divide or Operator.Modulo or Operator.And or Operator.Or or Operator.Xor or Operator.LeftShift or Operator.RightShift)
             {
                 var (top, topToken) = typeStack.Pop();
                 var (nextTop, nextTopToken) = typeStack.Pop();
@@ -1356,6 +1372,14 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
         else if (token.Value is "=")
         {
             ParseOperator(token, Operator.Equal);
+        }
+        else if (token.Value is "<<")
+        {
+            ParseOperator(token, Operator.LeftShift);
+        }
+        else if (token.Value is ">>")
+        {
+            ParseOperator(token, Operator.RightShift);
         }
         else if (token.Value is "==")
         {
@@ -1916,6 +1940,9 @@ enum Operator
     And,
     Or,
     Xor,
+
+    LeftShift,
+    RightShift,
 
     Equal,
     NotEqual,
