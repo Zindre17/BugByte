@@ -759,7 +759,8 @@ static List<string> GenerateAssembly(ParsedProgram program)
         else if (operation.Type is OperationType.Label)
         {
             var endLabel = operation.Data?.Text
-                ?? throw new Exception("Block-end-keyword has no jump label. Probably a bug in the parser.");
+                ?? throw new Exception("Label operation contained no label. Probably a bug in the parser.");
+
             assembly.Add($"{endLabel}:");
         }
         else if (operation.Type is OperationType.Jump)
@@ -785,7 +786,7 @@ static List<string> GenerateAssembly(ParsedProgram program)
         else if (operation.Type is OperationType.PushPinnedStackItem)
         {
             var label = operation.Token.Value;
-            var index = pinnedStackItems.IndexOf(label);
+            var index = pinnedStackItems.LastIndexOf(label);
             if (index == -1)
             {
                 throw new Exception($"Unknown pinned stack item `{label}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
@@ -840,7 +841,7 @@ static List<string> GenerateAssembly(ParsedProgram program)
     return assembly;
 }
 
-static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Dictionary<string, DataType> pinnedStackItems)
+static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Dictionary<string, Stack<DataType>> pinnedStackItems)
 {
     var nestedIndex = 0;
     for (var i = 0; i < program.Operations.Count; i++)
@@ -872,7 +873,7 @@ static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Di
             {
                 throw new Exception($"Unknown pinned stack item {token}");
             }
-            typeStack.Push((dataType, token));
+            typeStack.Push((dataType.Peek(), token));
         }
         else if (operation.Type is OperationType.PushDuplicate)
         {
@@ -889,11 +890,29 @@ static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Di
         }
         else if (operation.Type is OperationType.PinStackElement)
         {
-            pinnedStackItems[operation.Token.Value] = typeStack.Pop().Item1;
+            if (pinnedStackItems.ContainsKey(operation.Token.Value))
+            {
+                pinnedStackItems[operation.Token.Value].Push(typeStack.Pop().Item1);
+            }
+            else
+            {
+                var stack = new Stack<DataType>();
+                stack.Push(typeStack.Pop().Item1);
+                pinnedStackItems[operation.Token.Value] = stack;
+
+            }
         }
         else if (operation.Type is OperationType.UnpinStackElement)
         {
-            pinnedStackItems.Remove(operation.Token.Value);
+            var stack = pinnedStackItems[operation.Token.Value];
+            if (stack.Count is 1)
+            {
+                pinnedStackItems.Remove(operation.Token.Value);
+            }
+            else
+            {
+                stack.Pop();
+            }
         }
         else if (operation.Type is OperationType.Drop)
         {
@@ -1282,28 +1301,29 @@ static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Di
 
 // TODO: Allocate memory relative to the current scope from a pool
 // TODO: Deallocate memory at the end of scope
-static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memories, Dictionary<string, Token>? pinnedStackItems = null)
+static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memories, Dictionary<string, int>? pinnedStackItems = null, string? inlineLabelModifier = null)
 {
     var inclusions = new Dictionary<string, Token>();
     var operations = new List<Operation>();
     var tokens = block.Tokens;
     var program = new ParsedProgram(operations, new());
+    var modifier = inlineLabelModifier ?? "";
     while (tokens.Count > 0)
     {
         var token = tokens.Dequeue();
-        if (pinnedStackItems is not null && pinnedStackItems.TryGetValue(token.Value, out var tuple))
+        if (pinnedStackItems is not null && pinnedStackItems.TryGetValue(token.Value, out _))
         {
             operations.Add(new Operation(OperationType.PushPinnedStackItem, token, new Meta(Text: token.Value)));
         }
         else if (block.Functions.TryGetValue(token.Value, out var functionBlock))
         {
-            var parsedFunction = ParseProgram(functionBlock, new());
+            var parsedFunction = ParseProgram(functionBlock.Copy(), new(), inlineLabelModifier: $"{modifier}_{token.Line}_{token.Column}");
             program.NestedPrograms.Enqueue(parsedFunction);
             operations.Add(new Operation(OperationType.Inline, token));
         }
         else if (memories.ContainsKey(token.Value))
         {
-            operations.Add(new Operation(OperationType.PushMemory, token, new Meta(Text: token.Value)));
+            operations.Add(new Operation(OperationType.PushMemory, token, new Meta(Text: token.Value + modifier)));
         }
         else if (block.Constants.TryGetValue(token.Value, out var constant1))
         {
@@ -1466,7 +1486,7 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
                 throw new Exception($"`{name.Value}` is already allocated at {memories[name.Value]}");
             }
 
-            operations.Add(new Operation(OperationType.AllocateMemory, token, new Meta(Number: size, Text: name.Value)));
+            operations.Add(new Operation(OperationType.AllocateMemory, token, new Meta(Number: size, Text: name.Value + modifier)));
         }
         else if (token.Value is "store")
         {
@@ -1560,9 +1580,9 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
                 throw new Exception($"Expected yes: or no: after ?, but got `{firstBranch1Token.Value}` @ {firstBranch1Token.Filename}:{firstBranch1Token.Line}:{firstBranch1Token.Column}");
             }
 
-            var branch1Program = ParseProgram(branch1, memories, pinnedStackItems);
+            var branch1Program = ParseProgram(branch1, memories, pinnedStackItems, modifier);
 
-            var endLabel = $"end_if_{token.Line}_{token.Column}";
+            var endLabel = $"end_if_{token.Line}_{token.Column}{modifier}";
             var expectedBranch2Token = firstBranch1Token.Value is "yes:" ? "no:" : "yes:";
 
             if (block.NestedBlocks.Count is 0 || block.NestedBlocks.Peek().Tokens.Peek().Value != expectedBranch2Token)
@@ -1576,7 +1596,7 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
 
             var branch2 = block.NestedBlocks.Dequeue();
             var firstBranch2Token = branch2.Tokens.Peek();
-            var branch2Program = ParseProgram(branch2, memories, pinnedStackItems);
+            var branch2Program = ParseProgram(branch2, memories, pinnedStackItems, modifier);
 
             ParsedProgram yesBlock;
             ParsedProgram noBlock;
@@ -1596,7 +1616,7 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
                 yesToken = firstBranch2Token;
                 noToken = firstBranch1Token;
             }
-            var startYesBlockLabel = $"start_yes_branch_{yesToken.Line}_{yesToken.Column}";
+            var startYesBlockLabel = $"start_yes_branch_{yesToken.Line}_{yesToken.Column}{modifier}";
             operations.Add(new Operation(OperationType.JumpIfNotZero, token, new Meta(Text: startYesBlockLabel)));
             operations.Add(new Operation(OperationType.Branch, token, new Meta(Number: 2)));
 
@@ -1617,16 +1637,16 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
             var conditionBlock = block.NestedBlocks.Dequeue();
             var whileBlock = block.NestedBlocks.Dequeue();
 
-            var whileStartLabel = $"while_{token.Line}_{token.Column}";
-            var whileEndLabel = $"end_while_{token.Line}_{token.Column}";
+            var whileStartLabel = $"while_{token.Line}_{token.Column}{modifier}";
+            var whileEndLabel = $"end_while_{token.Line}_{token.Column}{modifier}";
             operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileStartLabel)));
             operations.Add(new Operation(OperationType.Loop, token));
 
-            var conditionProgram = ParseProgram(conditionBlock, memories, pinnedStackItems);
+            var conditionProgram = ParseProgram(conditionBlock, memories, pinnedStackItems, modifier);
             conditionProgram.Operations.Add(new Operation(OperationType.JumpIfZero, token, new Meta(Text: whileEndLabel)));
             program.NestedPrograms.Enqueue(conditionProgram);
 
-            var whileProgram = ParseProgram(whileBlock, memories, pinnedStackItems);
+            var whileProgram = ParseProgram(whileBlock, memories, pinnedStackItems, modifier);
             program.NestedPrograms.Enqueue(whileProgram);
             operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: whileStartLabel)));
             operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileEndLabel)));
@@ -1661,25 +1681,35 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
                 throw new Exception($"Expected at least one assignment, but got none @ {token.Filename}:{token.Line}:{token.Column}");
             }
 
-            pinnedStackItems ??= new Dictionary<string, Token>();
+            pinnedStackItems ??= new Dictionary<string, int>();
             for (var i = assignments.Count - 1; i >= 0; i--)
             {
-                if (!pinnedStackItems.TryAdd(assignments[i].Value, assignments[i]))
+                if (pinnedStackItems.ContainsKey(assignments[i].Value))
                 {
-                    var existing = pinnedStackItems[assignments[i].Value];
-                    throw new Exception($"Cannot pin {assignments[i]} because it is already pinned @ {existing.Filename}:{existing.Line}:{existing.Column}");
+                    pinnedStackItems[assignments[i].Value] += 1;
+                }
+                else
+                {
+                    pinnedStackItems[assignments[i].Value] = 1;
                 };
                 operations.Add(new Operation(OperationType.PinStackElement, assignments[i]));
             }
             operations.Add(new Operation(OperationType.UsingBlock, token));
             var consumingBlock = block.NestedBlocks.Dequeue();
-            var consumingProgram = ParseProgram(consumingBlock, memories, pinnedStackItems);
+            var consumingProgram = ParseProgram(consumingBlock, memories, pinnedStackItems, modifier);
             program.NestedPrograms.Enqueue(consumingProgram);
 
             foreach (var assignment in assignments)
             {
                 operations.Add(new Operation(OperationType.UnpinStackElement, assignment));
-                pinnedStackItems.Remove(assignment.Value);
+                if (pinnedStackItems[assignment.Value] is 1)
+                {
+                    pinnedStackItems.Remove(assignment.Value);
+                }
+                else
+                {
+                    pinnedStackItems[assignment.Value] -= 1;
+                }
             }
         }
         else if (token.Value is "include")
@@ -1996,7 +2026,19 @@ record Constant(DataType Type, int? Number = null, string? Text = null);
 
 record ParsedProgram(List<Operation> Operations, Queue<ParsedProgram> NestedPrograms);
 
-record Block(Queue<Token> Tokens, Queue<Block> NestedBlocks, Dictionary<string, Block> Functions, Dictionary<string, Constant> Constants, Dictionary<string, Structure> Structures);
+record Block(Queue<Token> Tokens, Queue<Block> NestedBlocks, Dictionary<string, Block> Functions, Dictionary<string, Constant> Constants, Dictionary<string, Structure> Structures)
+{
+    public Block Copy()
+    {
+        return new Block(
+            new Queue<Token>(new Queue<Token>(Tokens)),
+            new Queue<Block>(new Queue<Block>(NestedBlocks.Select(b => b.Copy()))),
+            new Dictionary<string, Block>(Functions),
+            new Dictionary<string, Constant>(Constants),
+            new Dictionary<string, Structure>(Structures));
+    }
+}
+
 class TypeStack : Stack<(DataType, Token)>
 {
     public TypeStack() : base() { }
