@@ -18,7 +18,7 @@ var words = LexProgram(fileName);
 
 try
 {
-    var startBlock = GroupBlock(null, words, new(), new(), new());
+    var startBlock = GroupBlock(null, words, new(), new(), new(), new() { [Path.GetFullPath(fileName)] = new Token(fileName, "entrypoint", 0, 0) });
     var program = ParseProgram(startBlock, new());
     var typeStack = TypeCheckProgram(program, new(), new());
     if (typeStack.Count > 0)
@@ -94,7 +94,7 @@ static ParsedProgram FlattenProgram(ParsedProgram program)
     return flattenedProgram;
 }
 
-static Block GroupBlock(Token? last, Queue<Token> tokens, Dictionary<string, Block> functions, Dictionary<string, Constant> constants, Dictionary<string, Structure> structures, string? expectedClosingTag = null)
+static Block GroupBlock(Token? last, Queue<Token> tokens, Dictionary<string, Block> functions, Dictionary<string, Constant> constants, Dictionary<string, Structure> structures, Dictionary<string, Token> inclusions, string? expectedClosingTag = null)
 {
     var block = new Block(new(), new(), functions, constants, structures);
     if (tokens.Count is 0)
@@ -128,7 +128,7 @@ static Block GroupBlock(Token? last, Queue<Token> tokens, Dictionary<string, Blo
             if (tokens.Peek().Value is "yes:" or "no:" && tokens.Count > 0)
             {
                 missingBranch = tokens.Peek().Value is "yes:" ? "no:" : "yes:";
-                block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, ";"));
+                block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ";"));
             }
             if (tokens.Count is 0)
             {
@@ -136,20 +136,20 @@ static Block GroupBlock(Token? last, Queue<Token> tokens, Dictionary<string, Blo
             }
             if (tokens.Peek().Value == missingBranch && tokens.Count > 0)
             {
-                block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, ";"));
+                block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ";"));
             }
         }
         else if (token.Value is "while")
         {
             block.Tokens.Enqueue(token);
-            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, ":"));
-            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, ";"));
+            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ":"));
+            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ";"));
         }
         else if (token.Value is "using")
         {
             block.Tokens.Enqueue(token);
-            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, ":"));
-            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, ";"));
+            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ":"));
+            block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ";"));
         }
         else if (token.Value.EndsWith("()"))
         {
@@ -158,7 +158,7 @@ static Block GroupBlock(Token? last, Queue<Token> tokens, Dictionary<string, Blo
             {
                 throw new Exception($"Missing ':' after function declaration {functionName}.");
             }
-            var functionBlock = GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, ";");
+            var functionBlock = GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ";");
             if (!block.Functions.TryAdd(functionName, functionBlock))
             {
                 throw new Exception($"Duplicate function {functionName}.");
@@ -247,6 +247,48 @@ static Block GroupBlock(Token? last, Queue<Token> tokens, Dictionary<string, Blo
             else
             {
                 throw new Exception($"Expected number after `aka`, but got {constant} @ {constant.Filename}:{constant.Line}:{constant.Column}");
+            }
+        }
+        else if (token.Value is "include")
+        {
+            var includePath = tokens.Dequeue();
+            if (!IsString(includePath, out var path))
+            {
+                throw new Exception($"Expected string after include, but got {includePath} @ {includePath.Filename}:{includePath.Line}:{includePath.Column}");
+            }
+            var fullPath = Path.GetFullPath(path);
+            Console.WriteLine($"Including {path}");
+            if (inclusions.TryGetValue(fullPath, out var existingInclude))
+            {
+                throw new Exception($"Cannot include {path} because it is already included at {existingInclude}.");
+            }
+            inclusions.Add(fullPath, includePath);
+            var words = LexProgram(path);
+            var blocks = GroupBlock(null, words, new(), new(), new(), inclusions);
+
+            foreach (var (key, function) in blocks.Functions)
+            {
+                if (block.Functions.ContainsKey(key))
+                {
+                    continue;
+                }
+                block.Functions.Add(key, function);
+            }
+            foreach (var (key, structure) in blocks.Structures)
+            {
+                if (block.Structures.ContainsKey(key))
+                {
+                    continue;
+                }
+                block.Structures.Add(key, structure);
+            }
+            foreach (var (key, constant) in blocks.Constants)
+            {
+                if (block.Constants.ContainsKey(key))
+                {
+                    continue;
+                }
+                block.Constants.Add(key, constant);
             }
         }
         else
@@ -1714,45 +1756,7 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
         }
         else if (token.Value is "include")
         {
-            var includePath = block.Tokens.Dequeue();
-            if (!IsString(includePath, out var path))
-            {
-                throw new Exception($"Expected string after include, but got {includePath} @ {includePath.Filename}:{includePath.Line}:{includePath.Column}");
-            }
-            var fullPath = Path.GetFullPath(path);
-            Console.WriteLine($"Including {fullPath}");
-            if (inclusions.TryGetValue(fullPath, out var existingInclude))
-            {
-                throw new Exception($"Cannot include {path} because it is already included at {existingInclude}.");
-            }
-            inclusions.Add(fullPath, includePath);
-            var words = LexProgram(path);
-            var blocks = GroupBlock(null, words, new(), new(), new());
-
-            foreach (var (key, function) in blocks.Functions)
-            {
-                if (block.Functions.ContainsKey(key))
-                {
-                    continue;
-                }
-                block.Functions.Add(key, function);
-            }
-            foreach (var (key, structure) in blocks.Structures)
-            {
-                if (block.Structures.ContainsKey(key))
-                {
-                    continue;
-                }
-                block.Structures.Add(key, structure);
-            }
-            foreach (var (key, constant) in blocks.Constants)
-            {
-                if (block.Constants.ContainsKey(key))
-                {
-                    continue;
-                }
-                block.Constants.Add(key, constant);
-            }
+            throw new Exception("Includes should have been handled by now.");
         }
         else if (token.Value is "struct")
         {
