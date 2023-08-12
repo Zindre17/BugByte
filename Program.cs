@@ -126,9 +126,9 @@ static Block GroupBlock(Token? last, Queue<Token> tokens, Dictionary<string, Blo
             {
                 throw new Exception($"Missing branch after {token}");
             }
-            if (tokens.Peek().Value is "yes:" or "no:" && tokens.Count > 0)
+            if (tokens.Peek().Value is "yes" or "no" && tokens.Count > 0)
             {
-                missingBranch = tokens.Peek().Value is "yes:" ? "no:" : "yes:";
+                missingBranch = tokens.Peek().Value is "yes" ? "no" : "yes";
                 block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ";"));
             }
             if (tokens.Count is 0)
@@ -1522,9 +1522,14 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
         {
             operations.Add(new Operation(OperationType.PrintString, token));
         }
-        else if (token.Value is "alloc[")
+        else if (token.Value is "alloc")
         {
-            var nextToken = GetNextToken($"Expected number after `alloc[`, but got nothing.");
+            var nextToken = GetNextToken("Expected `[` after `alloc`, but got nothing.");
+            if (nextToken.Value is not "[")
+            {
+                throw new Exception($"Expected `[` after `alloc`, but got {nextToken}.");
+            }
+            nextToken = GetNextToken($"Expected size after `[`, but got nothing.");
             int size;
             if (int.TryParse(nextToken.Value, out var number))
             {
@@ -1536,12 +1541,12 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
             }
             else
             {
-                throw new Exception($"Expected a number or structure type after `alloc[` but got {nextToken}");
+                throw new Exception($"Expected a number or structure type after `alloc` but got {nextToken}");
             }
-            var endToken = GetNextToken($"Expected `]` after `alloc[` but got nothing.");
+            var endToken = GetNextToken($"Expected closing `]`, but got nothing.");
             if (endToken.Value is not "]")
             {
-                throw new Exception($"Unclosed `alloc[` @ {token.Filename}:{token.Line}:{token.Column}");
+                throw new Exception($"Unclosed `alloc` size definition @ {token.Filename}:{token.Line}:{token.Column}");
             }
 
             var name = GetNextToken($"Expected name after `alloc[{nextToken.Value}]` but got nothing.");
@@ -1618,10 +1623,7 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
         }
         else if (token.Value is ":")
         {
-            if (tokens.Count > 0)
-            {
-                throw new Exception($"Expected nothing after `:`, but got `{tokens.Peek().Value}` @ {tokens.Peek().Filename}:{tokens.Peek().Line}:{tokens.Peek().Column}");
-            }
+
         }
         else if (token.Value is ";")
         {
@@ -1630,10 +1632,6 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
                 throw new Exception($"Expected nothing after `;`, but got `{tokens.Peek().Value}` @ {tokens.Peek().Filename}:{tokens.Peek().Line}:{tokens.Peek().Column}");
             }
         }
-        else if (token.Value is "yes:" or "no:")
-        {
-
-        }
         else if (token.Value is "?")
         {
             if (block.NestedBlocks.Count is 0)
@@ -1641,9 +1639,9 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
                 throw new Exception($"Expected at least one branch block after ?, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
             }
             var branch1 = block.NestedBlocks.Dequeue();
-            var firstBranch1Token = branch1.Tokens.Peek()
+            var firstBranch1Token = branch1.Tokens.Dequeue()
                 ?? throw new Exception($"Expected yes: or no: after ?, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-            if (firstBranch1Token.Value is not "yes:" and not "no:")
+            if (firstBranch1Token.Value is not "yes" and not "no")
             {
                 throw new Exception($"Expected yes: or no: after ?, but got `{firstBranch1Token.Value}` @ {firstBranch1Token.Filename}:{firstBranch1Token.Line}:{firstBranch1Token.Column}");
             }
@@ -1651,11 +1649,11 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
             var branch1Program = ParseProgram(branch1, memories, pinnedStackItems, modifier);
 
             var endLabel = $"end_if_{token.Line}_{token.Column}{modifier}";
-            var expectedBranch2Token = firstBranch1Token.Value is "yes:" ? "no:" : "yes:";
+            var expectedBranch2Token = firstBranch1Token.Value is "yes" ? "no" : "yes";
 
             if (block.NestedBlocks.Count is 0 || block.NestedBlocks.Peek().Tokens.Peek().Value != expectedBranch2Token)
             {
-                operations.Add(new Operation(firstBranch1Token.Value is "yes:" ? OperationType.JumpIfZero : OperationType.JumpIfNotZero, token, new Meta(Text: endLabel)));
+                operations.Add(new Operation(firstBranch1Token.Value is "yes" ? OperationType.JumpIfZero : OperationType.JumpIfNotZero, token, new Meta(Text: endLabel)));
                 operations.Add(new Operation(OperationType.Branch, token, new Meta(Number: 1)));
                 program.NestedPrograms.Enqueue(branch1Program);
                 operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
@@ -1663,14 +1661,14 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
             }
 
             var branch2 = block.NestedBlocks.Dequeue();
-            var firstBranch2Token = branch2.Tokens.Peek();
+            var firstBranch2Token = branch2.Tokens.Dequeue();
             var branch2Program = ParseProgram(branch2, memories, pinnedStackItems, modifier);
 
             ParsedProgram yesBlock;
             ParsedProgram noBlock;
             Token yesToken;
             Token noToken;
-            if (firstBranch1Token.Value is "yes:")
+            if (firstBranch1Token.Value is "yes")
             {
                 yesBlock = branch1Program;
                 noBlock = branch2Program;
