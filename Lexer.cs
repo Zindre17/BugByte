@@ -69,3 +69,8 @@ internal static class Lexer
     internal const string NullTerminatedStringLiteral = "0\"";
     internal static char[] SpecialSeparatorSymbols = new char[] { ':', ';', '?', '[', ']' };
 }
+
+internal record Token(string Filename, string Value, int Line, int Column)
+{
+    public override string ToString() => $"`{Value}` @ {Filename}:{Line}:{Column}";
+};

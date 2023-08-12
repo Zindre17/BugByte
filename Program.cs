@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Text;
+using BugByte;
 using static BugByte.Lexer;
 
 if (args.Length is 0)
@@ -1937,11 +1938,6 @@ enum DataType
     String,
     ZeroTerminatedString,
 }
-
-record Token(string Filename, string Value, int Line, int Column)
-{
-    public override string ToString() => $"`{Value}` @ {Filename}:{Line}:{Column}";
-};
 
 enum Operator
 {
