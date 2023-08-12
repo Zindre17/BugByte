@@ -1,15 +1,15 @@
-1 while dup 100 <: 
-    dup 15 % 0 =? 
+1 while i 100 <: 
+    i 15 % 0 =? 
     yes: "fizzbuzz\n" prints;
     no: 
-        dup 5 % 0 =? 
+        i 5 % 0 =? 
         yes: "buzz\n" prints; 
         no: 
-            dup 3 % 0 =? 
+            i 3 % 0 =? 
             yes: "fizz\n" prints; 
-            no: dup print;
+            no: i print;
         ;
     ;
-    1 +
+    i 1 +
 ;
 drop

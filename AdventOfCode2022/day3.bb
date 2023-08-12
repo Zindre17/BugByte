@@ -12,10 +12,9 @@ alloc[8] sum2
 0 sum2 store
 
 using line-count:
-    0
-    while dup line-count < :
-        dup 16 *     lines + load 
-        over 16 * 8 + lines + load (ptr)
+    0 while linenr line-count < :
+        linenr 16 *     lines + load 
+        linenr 16 * 8 + lines + load (ptr)
         using size ptr:
             size 2 /
             dup ptr + 
@@ -27,30 +26,27 @@ using line-count:
                 sum load + sum store
             ;
         ;
-        1 +
+        linenr 1 +
     ;
     drop
     
-    0
-    while dup line-count < :
-        using index:
-            index 0 + 16 *     lines + load
-            index 0 + 16 * 8 + lines + load (ptr)
-            index 1 + 16 *     lines + load
-            index 1 + 16 * 8 + lines + load (ptr)
-            index 2 + 16 *     lines + load
-            index 2 + 16 * 8 + lines + load (ptr)
-            using size1 ptr1 size2 ptr2 size3 ptr3:
-                size1 ptr1 get-items-bitwise 
-                size2 ptr2 get-items-bitwise 
-                size3 ptr3 get-items-bitwise 
-                &
-                &
-                get-priority-sum 
-                sum2 load + sum2 store
-            ;
-            index 3 +
+    0 while index line-count < :
+        index 0 + 16 *     lines + load
+        index 0 + 16 * 8 + lines + load (ptr)
+        index 1 + 16 *     lines + load
+        index 1 + 16 * 8 + lines + load (ptr)
+        index 2 + 16 *     lines + load
+        index 2 + 16 * 8 + lines + load (ptr)
+        using size1 ptr1 size2 ptr2 size3 ptr3:
+            size1 ptr1 get-items-bitwise 
+            size2 ptr2 get-items-bitwise 
+            size3 ptr3 get-items-bitwise 
+            &
+            &
+            get-priority-sum 
+            sum2 load + sum2 store
         ;
+        index 3 +
     ;
     drop
 ;
@@ -63,8 +59,8 @@ get-items-bitwise():
     alloc[8] items
     0 items store
     using size ptr:
-        0 while dup size <:
-            dup ptr + load-byte
+        0 while i size <:
+            i ptr + load-byte
             dup 97 < ? yes: 
                 # Uppercase (27 - 52)
                 64 - 26 +
@@ -76,7 +72,7 @@ get-items-bitwise():
             1 swap << 
             items load |
             items store
-            1 +
+            i 1 +
         ;
         drop
     ;
@@ -88,12 +84,11 @@ get-priority-sum():
     alloc[8] score   
     0 score store
     using items:
-        0
-        while dup 64 < :
-            1 over << 
+        0 while i 64 < :
+            1 i << 
             items &
-            0 > ? yes: dup score load + score store;
-            1 +
+            0 > ? yes: i score load + score store;
+            i 1 +
         ;
         drop
     ;

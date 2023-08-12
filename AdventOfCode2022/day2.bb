@@ -12,10 +12,9 @@ alloc[8] sum2
 0 sum2 store
 
 using line-count:
-    0
-    while dup line-count < :
-        dup 16 *      lines + load
-        over 16 * 8 + lines + load (ptr)
+    0 while linenr line-count < :
+        linenr 16 *     lines + load
+        linenr 16 * 8 + lines + load (ptr)
         over over "A X" == ? yes: 4 sum load + sum store 3 sum2 load + sum2 store;
         over over "A Y" == ? yes: 8 sum load + sum store 4 sum2 load + sum2 store;
         over over "A Z" == ? yes: 3 sum load + sum store 8 sum2 load + sum2 store;
@@ -26,7 +25,7 @@ using line-count:
         over over "C Y" == ? yes: 2 sum load + sum store 6 sum2 load + sum2 store;
         over over "C Z" == ? yes: 6 sum load + sum store 7 sum2 load + sum2 store;
         drop drop 
-        1 + 
+        linenr 1 + 
     ;
     drop
     "part1: " prints sum load print

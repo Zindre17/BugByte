@@ -18,8 +18,8 @@ alloc[8] three
 0 three store
 
 using line-count:
-    0 while dup line-count <:
-        dup 16 * lines + load
+    0 while linenr line-count <:
+        linenr 16 * lines + load
         dup 0 =?
         yes:
             current load 
@@ -45,12 +45,12 @@ using line-count:
             drop 0 current store
         ;
         no:
-            over 16 * lines + 8 + load
+            linenr 16 * lines + 8 + load
             over swap parse-number
             current load + current store
         ;
         drop 
-        1 +
+        linenr 1 +
     ; 
     "max (part 1): " prints max load print
     "top 3 (part 2): " prints max load two load three load + + print

@@ -14,9 +14,8 @@ inc():
 ;
 
 using line-count:
-    0
-    while dup line-count < :
-        dup lines parse-line 
+    0 while linenr line-count < :
+        linenr lines parse-line 
         using a b c d:
             a c = 
             b d =
@@ -43,7 +42,7 @@ using line-count:
                 + 2 = ? yes: sum2 inc ;
             ;
         ;
-        1 +
+        linenr 1 +
     ;
     drop
 ;
@@ -73,11 +72,10 @@ parse-line():
 index-of():
     load-byte swap drop
     using size ptr char:
-        0 
-        while dup size < :
-            dup ptr + load-byte char = ?
-            yes: size + ;
-            no: 1 + ;
+        0 while i size < :
+            i ptr + load-byte char = ?
+            yes: i size + ;
+            no: i 1 + ;
         ;
         size -
     ;

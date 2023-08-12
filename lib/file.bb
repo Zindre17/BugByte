@@ -77,18 +77,18 @@ get-lines():
 
     using size file lines:  
         0 
-        while dup size < :
-            1 over file + "\n" == ? 
+        while index size < :
+            1 index file + "\n" == ? 
             yes: 
-                dup prev load - 
+                index prev load - 
                 count load 16 * lines + store
                 prev load file +
                 count load 16 * 8 + lines + store
-                dup 1 + prev store
+                index 1 + prev store
                 count load 1 + count store
             ; 
                 
-            1 +
+            index 1 +
         ;
         dup prev load -
         count load 16 * lines + store
