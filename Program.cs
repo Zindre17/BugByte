@@ -142,6 +142,11 @@ static Block GroupBlock(Token? last, Queue<Token> tokens, Dictionary<string, Blo
         else if (token.Value is "while")
         {
             block.Tokens.Enqueue(token);
+            if (tokens.Count is 0)
+            {
+                throw new Exception($"Expected at least one token after `while`, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            block.Tokens.Enqueue(tokens.Dequeue());
             block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ":"));
             block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ";"));
         }
@@ -843,6 +848,18 @@ static List<string> GenerateAssembly(ParsedProgram program)
             assembly.Add(";-- unpin stack element --");
             assembly.Add($"  sub r15, 8");
         }
+        else if (operation.Type is OperationType.UpdatePinnedStackElement)
+        {
+            var label = operation.Token.Value;
+            var index = pinnedStackItems.LastIndexOf(label);
+            if (index == -1)
+            {
+                throw new Exception($"Unknown pinned stack item `{label}` @ {operation.Token.Filename}:{operation.Token.Line}:{operation.Token.Column}");
+            }
+            assembly.Add(";-- update pinned stack element --");
+            assembly.Add($"  pop rax");
+            assembly.Add($"  mov [r14 + {index * 8}], rax");
+        }
         else if (operation.Type is OperationType.Exit)
         {
             assembly.Add($";-- exit --");
@@ -955,6 +972,14 @@ static TypeStack TypeCheckProgram(ParsedProgram program, TypeStack typeStack, Di
             {
                 stack.Pop();
             }
+        }
+        else if (operation.Type is OperationType.UpdatePinnedStackElement)
+        {
+            if (typeStack.Count is 0)
+            {
+                throw new Exception($"{operation.Type} expects a value on the stack, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            typeStack.Pop();
         }
         else if (operation.Type is OperationType.Drop)
         {
@@ -1672,6 +1697,26 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
         }
         else if (token.Value is "while")
         {
+            if (block.NestedBlocks.Count is 0)
+            {
+                throw new Exception($"Expected identifier after `while`, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+            var label = tokens.Dequeue();
+            if (IsKeyword(label.Value, out var kwd))
+            {
+                throw new Exception($"Expected identifier after `while`, but got an existing keyword ({kwd}) {token}.");
+            }
+
+            pinnedStackItems ??= new Dictionary<string, int>();
+            if (pinnedStackItems.TryGetValue(label.Value, out var current))
+            {
+                pinnedStackItems[label.Value] = current + 1;
+            }
+            else
+            {
+                pinnedStackItems[label.Value] = 1;
+            }
+
             if (block.NestedBlocks.Count < 2)
             {
                 throw new Exception($"Expected at least two blocks after while, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
@@ -1681,17 +1726,32 @@ static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memorie
 
             var whileStartLabel = $"while_{token.Line}_{token.Column}{modifier}";
             var whileEndLabel = $"end_while_{token.Line}_{token.Column}{modifier}";
+
+            operations.Add(new Operation(OperationType.PinStackElement, label));
+
             operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileStartLabel)));
             operations.Add(new Operation(OperationType.Loop, token));
 
             var conditionProgram = ParseProgram(conditionBlock, memories, pinnedStackItems, modifier);
+            conditionProgram.Operations.Insert(0, new Operation(OperationType.PushPinnedStackItem, label));
             conditionProgram.Operations.Add(new Operation(OperationType.JumpIfZero, token, new Meta(Text: whileEndLabel)));
             program.NestedPrograms.Enqueue(conditionProgram);
 
             var whileProgram = ParseProgram(whileBlock, memories, pinnedStackItems, modifier);
+            whileProgram.Operations.Add(new Operation(OperationType.UpdatePinnedStackElement, label));
             program.NestedPrograms.Enqueue(whileProgram);
             operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: whileStartLabel)));
             operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileEndLabel)));
+            operations.Add(new Operation(OperationType.PushPinnedStackItem, label));
+            operations.Add(new Operation(OperationType.UnpinStackElement, label));
+            if (pinnedStackItems[label.Value] is 1)
+            {
+                pinnedStackItems.Remove(label.Value);
+            }
+            else
+            {
+                pinnedStackItems[label.Value] -= 1;
+            }
         }
         else if (token.Value is "using")
         {
@@ -2008,6 +2068,7 @@ enum OperationType
     UsingBlock,
     PinStackElement,
     UnpinStackElement,
+    UpdatePinnedStackElement,
     Syscall,
     AllocateMemory,
     PushMemory,
