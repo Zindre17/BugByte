@@ -15,13 +15,22 @@ if (args.Length > 1)
     return;
 }
 
-var fileName = args[0];
+var path = args[0];
+if (!Path.Exists(path))
+{
+    throw new Exception("File does not exist.");
+}
+
+var directory = Path.GetDirectoryName(Path.GetFullPath(path)) ?? throw new Exception("Failed to get current directory.");
+var fileName = Path.GetFileName(path);
+
+Directory.SetCurrentDirectory(directory);
 
 var words = LexFile(fileName);
 
 try
 {
-    var startBlock = GroupBlock(null, words, new(), new(), new(), new() { [Path.GetFullPath(fileName)] = new Token(fileName, "entrypoint", 0, 0) });
+    var startBlock = GroupBlock(null, words, new(), new(), new(), new() { [Path.GetFullPath(path)] = new Token(fileName, "entrypoint", 0, 0) });
     var program = ParseProgram(startBlock, new());
     var typeStack = TypeCheckProgram(program, new(), new());
     if (typeStack.Count > 0)
@@ -30,7 +39,7 @@ try
     }
     var flattendProgram = FlattenProgram(program);
     var assembly = GenerateAssembly(flattendProgram);
-    Directory.CreateDirectory(Directory.GetParent($"./output/{fileName.Split(".")[0]}")?.FullName ?? throw new Exception("Failed to create output directory."));
+    Directory.CreateDirectory("./output");
     File.WriteAllLines($"./output/{fileName.Split(".")[0]}.asm", assembly);
 }
 catch (Exception e)
@@ -61,7 +70,7 @@ if (!RunExternalCommand("chmod", $"+x {fileNameWithoutExtension}"))
     Environment.Exit(1);
 }
 
-RunExternalCommand($"./{fileNameWithoutExtension}", "");
+RunExternalCommand(fileNameWithoutExtension, "");
 
 static ParsedProgram FlattenProgram(ParsedProgram program)
 {

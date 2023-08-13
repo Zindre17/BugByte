@@ -169,9 +169,13 @@ internal static class Parser
                 var includePath = tokens.Dequeue();
                 if (!IsString(includePath, out var path))
                 {
-                    throw new Exception($"Expected string after include, but got {includePath} @ {includePath.Filename}:{includePath.Line}:{includePath.Column}");
+                    throw new Exception($"Expected string after include, but got {includePath}");
                 }
                 var fullPath = Path.GetFullPath(path);
+                if (!File.Exists(fullPath))
+                {
+                    throw new Exception($"Cannot include {path}({fullPath}) because it does not exist at {token}.");
+                }
                 Console.WriteLine($"Including {path}");
                 if (inclusions.TryGetValue(fullPath, out var existingInclude))
                 {
