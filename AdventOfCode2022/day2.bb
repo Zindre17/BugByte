@@ -1,6 +1,6 @@
-include "./lib/file.bb"
+include "../lib/file.bb"
 
-0"./AdventOfCode2022/day2.txt" read-file
+0"./day2.txt" read-file
 
 alloc[800000] lines
 lines get-lines

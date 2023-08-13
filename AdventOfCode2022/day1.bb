@@ -1,9 +1,9 @@
-include "./lib/file.bb"
-include "./lib/parsing.bb"
+include "../lib/file.bb"
+include "../lib/parsing.bb"
 
 alloc[80000] lines
 
-0"./AdventOfCode2022/day1.txt" read-file 
+0"./day1.txt" read-file 
 lines get-lines
 
 alloc[8] max

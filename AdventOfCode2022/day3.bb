@@ -1,8 +1,8 @@
-include "./lib/file.bb"
+include "../lib/file.bb"
 
 alloc[80000] lines
 
-0"./AdventOfCode2022/day3.txt" read-file
+0"./day3.txt" read-file
 lines get-lines
 
 alloc[8] sum
