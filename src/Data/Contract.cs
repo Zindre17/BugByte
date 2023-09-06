@@ -4,6 +4,30 @@ internal record Contract(DataType[] In, DataType[] Out)
 {
     public Contract() : this(Array.Empty<DataType>(), Array.Empty<DataType>()) { }
 
+    public static Contract Producer(params DataType[] outTypes) => new(Array.Empty<DataType>(), outTypes);
+    public static Contract Consumer(params DataType[] inTypes) => new(inTypes, Array.Empty<DataType>());
+
+    public void TypeCheck(Token token, TypeStack stack)
+    {
+        if (stack.Count < In.Length)
+        {
+            throw new Exception($"Not enough elements on the stack. Expected {In.Length} elements, but got {stack.Count}.");
+        }
+        for (var index = In.Length - 1; index >= 0; index--)
+        {
+            var expected = In[index];
+            var (actual, actualToken) = stack.Pop();
+            if (actual != expected)
+            {
+                throw new Exception($"Type mismatch: `{actual}`({actualToken}) != `{expected}` for {token}\n{stack}");
+            }
+        }
+        foreach (var type in Out)
+        {
+            stack.Push((type, token));
+        }
+    }
+
     public bool IsEmpty => In.Length is 0 && Out.Length is 0;
 
     public Contract JoinInto(Contract next)
