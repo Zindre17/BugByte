@@ -4,690 +4,459 @@ namespace BugByte;
 
 internal static class Parser
 {
-    internal static Block GroupBlock(Token? last, Queue<Token> tokens, Dictionary<string, Block> functions, Dictionary<string, Constant> constants, Dictionary<string, Structure> structures, Dictionary<string, Token> inclusions, string? expectedClosingTag = null)
+    private static int stringLiteralCounter = 0;
+    private static int nullTerminatedStringLiteralCounter = 0;
+    internal static Context MetaEvaluate(
+        IEnumerable<Token> tokens,
+        GlobalContext meta,
+        Context outerContext,
+        string? terminatingString,
+        out IEnumerable<Token> innerRemainingTokens,
+        out IEnumerable<Token> remainingTokens
+        )
     {
-        var block = new Block(new(), new(), functions, constants, structures);
-        if (tokens.Count is 0)
+        remainingTokens = new Queue<Token>();
+        innerRemainingTokens = new Queue<Token>();
+
+        var nestedLevel = 0;
+
+        var tokenQueue = new Queue<Token>(tokens);
+
+        var innerContext = new Context(outerContext);
+
+        while (tokenQueue.Count > 0 && (tokenQueue.Peek().Value != terminatingString || nestedLevel > 0))
         {
-            if (last is null)
+            var token = tokenQueue.Dequeue();
+
+            if (token.Value is ":")
             {
-                throw new Exception("Empty program.");
+                nestedLevel += 1;
+                ((Queue<Token>)innerRemainingTokens).Enqueue(token);
             }
-            throw new Exception($"Empty block after {last}.");
-        }
-        while (tokens.Count > 0)
-        {
-            var token = tokens.Dequeue();
-            if (expectedClosingTag is not null && (token.Value == expectedClosingTag))
+            else if (token.Value is ";")
             {
-                if (block.Tokens.Count is 0)
-                {
-                    throw new Exception($"Empty block after {last}");
-                }
-                block.Tokens.Enqueue(token);
-                return block;
+                nestedLevel -= 1;
+                ((Queue<Token>)innerRemainingTokens).Enqueue(token);
             }
-            else if (token.Value is "?")
+            else if (token.Value is Tokens.Keyword.Include)
             {
-                block.Tokens.Enqueue(token);
-                var missingBranch = "";
-                if (tokens.Count is 0)
-                {
-                    throw new Exception($"Missing branch after {token}");
-                }
-                if (tokens.Peek().Value is "yes" or "no" && tokens.Count > 0)
-                {
-                    missingBranch = tokens.Peek().Value is "yes" ? "no" : "yes";
-                    block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ";"));
-                }
-                if (tokens.Count is 0)
-                {
-                    continue;
-                }
-                if (tokens.Peek().Value == missingBranch && tokens.Count > 0)
-                {
-                    block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ";"));
-                }
+                var fileRootContext = ParseInclude(token, tokenQueue, meta);
+                innerContext.Merge(fileRootContext);
             }
-            else if (token.Value is "while")
+            else if (token.Value is Tokens.Keyword.Struct)
             {
-                block.Tokens.Enqueue(token);
-                if (tokens.Count is 0)
-                {
-                    throw new Exception($"Expected at least one token after `while`, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-                }
-                block.Tokens.Enqueue(tokens.Dequeue());
-                block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ":"));
-                block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ";"));
+                innerContext.AddStructure(ParseStructure(token, tokenQueue));
             }
-            else if (token.Value is "using")
+            else if (token.Value is Tokens.Keyword.ConstantDefinition)
             {
-                block.Tokens.Enqueue(token);
-                block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ":"));
-                block.NestedBlocks.Enqueue(GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ";"));
+                innerContext.AddConstant(ParseConstant(token, tokenQueue));
             }
-            else if (token.Value.EndsWith("()"))
+            else if (tokenQueue.Count > 0 && tokenQueue.Peek().Value is "(")
             {
-                var functionName = token.Value[..^2];
-                if (tokens.Count is 0 || tokens.Dequeue().Value is not ":")
+                var functionName = token.Value;
+                tokenQueue.Dequeue();
+                if (Tokens.IsReserved(functionName))
                 {
-                    throw new Exception($"Missing ':' after function declaration {functionName}.");
-                }
-                var functionBlock = GroupBlock(token, tokens, block.Functions, block.Constants, block.Structures, inclusions, ";");
-                if (!block.Functions.TryAdd(functionName, functionBlock))
-                {
-                    throw new Exception($"Duplicate function {functionName}.");
-                }
-            }
-            else if (token.Value is "struct")
-            {
-                var structName = tokens.Dequeue();
-                var fields = new Dictionary<string, StructureField>();
-
-                if (IsKeyword(structName.Value, out var keyword))
-                {
-                    throw new Exception($"Expected identifier, but got an existing keyword {keyword}.");
+                    throw new Exception($"Cannot use reserved keyword {token} as a function name.");
                 }
 
-                if (tokens.Count is 0)
+                var arguments = ParseDataTypes(tokenQueue, ")");
+                var argumentsEndToken = tokenQueue.Dequeue();
+                if (argumentsEndToken.Value is not ")")
                 {
-                    throw new Exception($"Expected block, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+                    throw new Exception($"Expected `)` after function arguments, but got {argumentsEndToken}.");
                 }
-                tokens.Dequeue();
 
-                var offset = 0;
-                while (tokens.Count > 0)
+                var output = ParseDataTypes(tokenQueue, ":");
+                var outputEndToken = tokenQueue.Dequeue();
+                if (outputEndToken.Value is not ":")
                 {
-                    var member = tokens.Dequeue();
-                    if (member.Value is ";")
-                    {
-                        break;
-                    }
-                    if (IsKeyword(member.Value, out keyword))
-                    {
-                        throw new Exception($"Expected identifier, but got an existing keyword {keyword}.");
-                    }
+                    throw new Exception($"Expected `:` after function output, but got {outputEndToken}.");
+                }
 
-                    var sizeToken = tokens.Dequeue();
-                    if (sizeToken.Value is ";")
-                    {
-                        break;
-                    }
-
-                    if (!int.TryParse(sizeToken.Value, out var size))
-                    {
-                        throw new Exception($"Expected integer, but got {sizeToken}.");
-                    }
-
-                    if (tokens.Count is 0)
-                    {
-                        throw new Exception($"Expected identifier, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-                    }
-
-                    fields.Add(member.Value, new(offset, size, member.Value));
-                    offset += size;
-
-                    if (tokens.Count is 0)
-                    {
-                        throw new Exception($"Unclosed struct definition @ {token.Filename}:{token.Line}:{token.Column}");
-                    }
-                }
-                var structure = new Structure(structName.Value, fields);
-                block.Structures.Add(structure.Name, structure);
-            }
-            else if (token.Value is "aka")
-            {
-                if (tokens.Count < 2)
+                var contract = new Contract(arguments.ToArray(), output.ToArray());
+                var functionContext = MetaEvaluate(tokenQueue, meta, innerContext, ";", out var innerRemaining, out var remaining);
+                functionContext.Name = functionName;
+                tokenQueue = (Queue<Token>)remaining;
+                var endToken = tokenQueue.Dequeue();
+                if (endToken.Value is not ";")
                 {
-                    throw new Exception($"Expected at least two tokens after `aka`, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+                    throw new Exception($"Expected `;` after function, but got {endToken}.");
                 }
-                var name = tokens.Dequeue();
-                if (IsKeyword(name.Value, out var keyword))
-                {
-                    throw new Exception($"Expected identifier, but got an existing keyword {keyword}.");
-                }
-                var constant = tokens.Dequeue();
-                if (int.TryParse(constant.Value, out var constInt))
-                {
-                    block.Constants.Add(name.Value, new(DataType.Number, Number: constInt));
-                }
-                else if (IsString(constant, out var constString))
-                {
-                    block.Constants.Add(name.Value, new(DataType.String, Text: constString));
-                }
-                else if (IsZeroTerminatedString(constant, out var constZeroString))
-                {
-                    block.Constants.Add(name.Value, new(DataType.ZeroTerminatedString, Text: constZeroString));
-                }
-                else
-                {
-                    throw new Exception($"Expected number after `aka`, but got {constant} @ {constant.Filename}:{constant.Line}:{constant.Column}");
-                }
-            }
-            else if (token.Value is "include")
-            {
-                var includePath = tokens.Dequeue();
-                if (!IsString(includePath, out var path))
-                {
-                    throw new Exception($"Expected string after include, but got {includePath}");
-                }
-                var fullPath = Path.GetFullPath(path);
-                if (!File.Exists(fullPath))
-                {
-                    throw new Exception($"Cannot include {path}({fullPath}) because it does not exist at {token}.");
-                }
-                Console.WriteLine($"Including {path}");
-                if (inclusions.TryGetValue(fullPath, out var existingInclude))
-                {
-                    throw new Exception($"Cannot include {path} because it is already included at {existingInclude}.");
-                }
-                inclusions.Add(fullPath, includePath);
-                var words = LexFile(path);
-                var blocks = GroupBlock(null, words, new(), new(), new(), inclusions);
-
-                foreach (var (key, function) in blocks.Functions)
-                {
-                    if (block.Functions.ContainsKey(key))
-                    {
-                        continue;
-                    }
-                    block.Functions.Add(key, function);
-                }
-                foreach (var (key, structure) in blocks.Structures)
-                {
-                    if (block.Structures.ContainsKey(key))
-                    {
-                        continue;
-                    }
-                    block.Structures.Add(key, structure);
-                }
-                foreach (var (key, constant) in blocks.Constants)
-                {
-                    if (block.Constants.ContainsKey(key))
-                    {
-                        continue;
-                    }
-                    block.Constants.Add(key, constant);
-                }
+                var functionMeta = new FunctionMeta(token, innerRemaining.ToList(), contract, functionContext);
+                innerContext.AddFunction(functionMeta);
             }
             else
             {
-                block.Tokens.Enqueue(token);
+                ((Queue<Token>)innerRemainingTokens).Enqueue(token);
             }
         }
-        if (expectedClosingTag is not null)
+        foreach (var rem in tokenQueue)
         {
-            var openingToken = block.Tokens.Peek();
-            throw new Exception($"Unclosed block at @ {openingToken.Filename}:{openingToken.Line}:{openingToken.Column}");
+            ((Queue<Token>)remainingTokens).Enqueue(rem);
         }
-        return block;
+        return innerContext;
     }
 
-    // TODO: Allocate memory relative to the current scope from a pool
-    // TODO: Deallocate memory at the end of scope
-    internal static ParsedProgram ParseProgram(Block block, Dictionary<string, Token> memories, Dictionary<string, int>? pinnedStackItems = null, string? inlineLabelModifier = null)
+    public static List<IProgramPiece> ParseProgram(Queue<Token> tokens, GlobalContext meta, Context context, string? terminationToken = null)
     {
-        var inclusions = new Dictionary<string, Token>();
-        var operations = new List<Operation>();
-        var tokens = block.Tokens;
-        var program = new ParsedProgram(operations, new());
-        var modifier = inlineLabelModifier ?? "";
-        while (tokens.Count > 0)
+        if (tokens.Count is 0)
+        {
+            throw new Exception($"Expected tokens, but got nothing.");
+        }
+
+        var programPieces = new List<IProgramPiece>();
+
+        while (tokens.Count > 0 && tokens.Peek().Value != terminationToken)
         {
             var token = tokens.Dequeue();
-            if (pinnedStackItems is not null && pinnedStackItems.TryGetValue(token.Value, out _))
+            if (int.TryParse(token.Value, out var number))
             {
-                operations.Add(new Operation(OperationType.PushPinnedStackItem, token, new Meta(Text: token.Value)));
+                programPieces.Add(Instructions.Literal.Number(token, number));
             }
-            else if (block.Functions.TryGetValue(token.Value, out var functionBlock))
+            else if (IsString(token, out var value))
             {
-                var parsedFunction = ParseProgram(functionBlock.Copy(), new(), inlineLabelModifier: $"{modifier}_{token.Line}_{token.Column}");
-                program.NestedPrograms.Enqueue(parsedFunction);
-                operations.Add(new Operation(OperationType.Inline, token));
-            }
-            else if (memories.ContainsKey(token.Value))
-            {
-                operations.Add(new Operation(OperationType.PushMemory, token, new Meta(Text: token.Value + modifier)));
-            }
-            else if (block.Constants.TryGetValue(token.Value, out var constant1))
-            {
-                if (constant1.Type is DataType.Number)
+                if (!meta.StringLiterals.TryGetValue(token.Value, out var str))
                 {
-                    operations.Add(new Operation(OperationType.PushNumber, token, new Meta(Number: constant1.Number)));
+                    str = new(value, stringLiteralCounter++);
+                    meta.StringLiterals.Add(token.Value, str);
                 }
-                else if (constant1.Type is DataType.ZeroTerminatedString)
+                programPieces.Add(Instructions.Literal.String(token, str));
+            }
+            else if (IsZeroTerminatedString(token, out value))
+            {
+                if (!meta.NullTerminatedStringLiterals.TryGetValue(token.Value, out var nullStr))
                 {
-                    operations.Add(new Operation(OperationType.PushZeroString, token, new Meta(Text: constant1.Text)));
+                    nullStr = new(value, nullTerminatedStringLiteralCounter++);
+                    meta.NullTerminatedStringLiterals.Add(token.Value, nullStr);
                 }
-                else if (constant1.Type is DataType.String)
+                programPieces.Add(Instructions.Literal.NullTerminatedString(token, nullStr.Index));
+            }
+            else if (token.Value is Tokens.Keyword.Yes)
+            {
+                programPieces.Add(Instructions.Boolean.Yes(token));
+            }
+            else if (token.Value is Tokens.Keyword.No)
+            {
+                programPieces.Add(Instructions.Boolean.No(token));
+            }
+            else if (context.TryGetFunction(token.Value, out var func))
+            {
+                var funcProgram = ParseProgram(new Queue<Token>(func.Body), meta, func.Context, ";");
+                var parsedFunc = new Function(token, func.Contract, funcProgram);
+                programPieces.Add(parsedFunc);
+            }
+            else if (meta.PinnedStackItems.TryGetValue(token.Value, out var pinnedStackItems))
+            {
+                programPieces.Add(Instructions.PushPinnedStackItem(pinnedStackItems.Peek()));
+            }
+            else if (context.TryGetConstant(token.Value, out var constant))
+            {
+                if (constant.Type is DataType.String)
                 {
-                    operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: constant1.Text)));
+                    var str = meta.StringLiterals[constant.Text!];
+                    programPieces.Add(Instructions.Literal.String(token, str));
+                }
+                else if (constant.Type is DataType.ZeroTerminatedString)
+                {
+                    var zstr = meta.NullTerminatedStringLiterals[constant.Text!];
+                    programPieces.Add(Instructions.Literal.NullTerminatedString(token, zstr.Index));
+                }
+                else if (constant.Type is DataType.Number)
+                {
+                    programPieces.Add(Instructions.Literal.Number(token, constant.Number!.Value));
                 }
                 else
                 {
-                    throw new Exception($"Unknown constant type {constant1.Type} from {token}.");
+                    throw new Exception($"Unknown constant type {constant.Type}.");
                 }
             }
-            else if (block.Structures.TryGetValue(token.Value.Split(".", 2)[0], out var structType))
+            else if (token.Value is Tokens.Operator.Add)
             {
-                if (!structType.Fields.TryGetValue(token.Value.Split(".", 2)[1], out var structField))
+                programPieces.Add(Instructions.Operations.Add(token));
+            }
+            else if (token.Value is Tokens.Operator.Subtract)
+            {
+                programPieces.Add(Instructions.Operations.Subtract(token));
+            }
+            else if (token.Value is Tokens.Operator.Multiply)
+            {
+                programPieces.Add(Instructions.Operations.Multiply(token));
+            }
+            else if (token.Value is Tokens.Operator.Divide)
+            {
+                programPieces.Add(Instructions.Operations.Divide(token));
+            }
+            else if (token.Value is Tokens.Operator.Modulo)
+            {
+                programPieces.Add(Instructions.Operations.Modulo(token));
+            }
+            else if (token.Value is Tokens.Operator.Xor)
+            {
+                programPieces.Add(Instructions.Operations.Xor(token));
+            }
+            else if (token.Value is Tokens.Operator.Or)
+            {
+                programPieces.Add(Instructions.Operations.Or(token));
+            }
+            else if (token.Value is Tokens.Operator.And)
+            {
+                programPieces.Add(Instructions.Operations.And(token));
+            }
+            else if (token.Value is Tokens.Operator.Equal)
+            {
+                programPieces.Add(Instructions.Operations.Equal(token));
+            }
+            else if (token.Value is Tokens.Operator.ShiftLeft)
+            {
+                programPieces.Add(Instructions.Operations.ShiftLeft(token));
+            }
+            else if (token.Value is Tokens.Operator.ShiftRight)
+            {
+                programPieces.Add(Instructions.Operations.ShiftRight(token));
+            }
+            else if (token.Value is Tokens.Operator.StringEqual)
+            {
+                programPieces.Add(Instructions.Operations.StringEqual(token));
+            }
+            else if (token.Value is Tokens.Operator.NotEqual)
+            {
+                programPieces.Add(Instructions.Operations.NotEqual(token));
+            }
+            else if (token.Value is Tokens.Operator.LessThan)
+            {
+                programPieces.Add(Instructions.Operations.LessThan(token));
+            }
+            else if (token.Value is Tokens.Operator.LessThanOrEqual)
+            {
+                programPieces.Add(Instructions.Operations.LessThanOrEqual(token));
+            }
+            else if (token.Value is Tokens.Operator.GreaterThan)
+            {
+                programPieces.Add(Instructions.Operations.GreaterThan(token));
+            }
+            else if (token.Value is Tokens.Operator.GreaterThanOrEqual)
+            {
+                programPieces.Add(Instructions.Operations.GreaterThanOrEqual(token));
+            }
+            else if (token.Value is Tokens.Keyword.Print)
+            {
+                programPieces.Add(Instructions.Print(token));
+            }
+            else if (token.Value is Tokens.Keyword.PrintString)
+            {
+                programPieces.Add(Instructions.PrintString(token));
+            }
+            else if (token.Value is Tokens.Keyword.Over)
+            {
+                programPieces.Add(Instructions.Over(token));
+            }
+            else if (token.Value is Tokens.Keyword.Drop)
+            {
+                programPieces.Add(Instructions.Drop(token));
+            }
+            else if (token.Value is Tokens.Keyword.Swap)
+            {
+                programPieces.Add(Instructions.Swap(token));
+            }
+            else if (token.Value is Tokens.Keyword.Branch)
+            {
+                programPieces.Add(ParseBranches(token, tokens, meta, context));
+            }
+            else if (token.Value is Tokens.Keyword.Loop)
+            {
+                programPieces.Add(ParseLoop(token, tokens, meta, context));
+            }
+            else if (token.Value is Tokens.Keyword.Syscall0)
+            {
+                programPieces.Add(Instructions.Syscall(0, token));
+            }
+            else if (token.Value is Tokens.Keyword.Syscall1)
+            {
+                programPieces.Add(Instructions.Syscall(1, token));
+            }
+            else if (token.Value is Tokens.Keyword.Syscall2)
+            {
+                programPieces.Add(Instructions.Syscall(2, token));
+            }
+            else if (token.Value is Tokens.Keyword.Syscall3)
+            {
+                programPieces.Add(Instructions.Syscall(3, token));
+            }
+            else if (token.Value is Tokens.Keyword.Syscall4)
+            {
+                programPieces.Add(Instructions.Syscall(4, token));
+            }
+            else if (token.Value is Tokens.Keyword.Syscall5)
+            {
+                programPieces.Add(Instructions.Syscall(5, token));
+            }
+            else if (token.Value is Tokens.Keyword.Syscall6)
+            {
+                programPieces.Add(Instructions.Syscall(6, token));
+            }
+            else if (token.Value is Tokens.Keyword.Allocate)
+            {
+                if (tokens.Count is 0)
                 {
-                    throw new Exception($"Unknown field {token.Value.Split(".", 2)[1]} in structure {structType.Name} from {token}.");
+                    throw new Exception($"Expected `[` after {token}, but got nothing.");
                 }
-                operations.Add(new Operation(OperationType.PushNumber, token, new Meta(Number: structField.Offset)));
-                operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: Operator.Add)));
-            }
-            else if (int.TryParse(token.Value, out var value))
-            {
-                operations.Add(new Operation(OperationType.PushNumber, token, new Meta(Number: value)));
-            }
-            else if (token.Value is "+")
-            {
-                ParseOperator(token, Operator.Add);
-            }
-            else if (token.Value is "-")
-            {
-                ParseOperator(token, Operator.Subtract);
-            }
-            else if (token.Value is "*")
-            {
-                ParseOperator(token, Operator.Multiply);
-            }
-            else if (token.Value is "/")
-            {
-                ParseOperator(token, Operator.Divide);
-            }
-            else if (token.Value is "%")
-            {
-                ParseOperator(token, Operator.Modulo);
-            }
-            else if (token.Value is "^")
-            {
-                ParseOperator(token, Operator.Xor);
-            }
-            else if (token.Value is "|")
-            {
-                ParseOperator(token, Operator.Or);
-            }
-            else if (token.Value is "&")
-            {
-                ParseOperator(token, Operator.And);
-            }
-            else if (token.Value is "=")
-            {
-                ParseOperator(token, Operator.Equal);
-            }
-            else if (token.Value is "<<")
-            {
-                ParseOperator(token, Operator.LeftShift);
-            }
-            else if (token.Value is ">>")
-            {
-                ParseOperator(token, Operator.RightShift);
-            }
-            else if (token.Value is "==")
-            {
-                operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: Operator.StringEqual)));
-            }
-            else if (token.Value is "!==")
-            {
-                operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: Operator.StringEqual)));
-                operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: Operator.Not)));
-            }
-            else if (token.Value is "!=")
-            {
-                ParseOperator(token, Operator.NotEqual);
-            }
-            else if (token.Value is "<")
-            {
-                ParseOperator(token, Operator.LessThan);
-            }
-            else if (token.Value is "<=")
-            {
-                ParseOperator(token, Operator.LessThanOrEqual);
-            }
-            else if (token.Value is ">")
-            {
-                ParseOperator(token, Operator.GreaterThan);
-            }
-            else if (token.Value is ">=")
-            {
-                ParseOperator(token, Operator.GreaterThanOrEqual);
-            }
-            else if (token.Value is "dup")
-            {
-                operations.Add(new Operation(OperationType.PushDuplicate, token));
-            }
-            else if (token.Value is "drop")
-            {
-                operations.Add(new Operation(OperationType.Drop, token));
-            }
-            else if (token.Value is "over")
-            {
-                operations.Add(new Operation(OperationType.Over, token));
-            }
-            else if (token.Value is "swap")
-            {
-                operations.Add(new Operation(OperationType.Swap, token));
-            }
-            else if (token.Value is "print")
-            {
-                operations.Add(new Operation(OperationType.Print, token));
-            }
-            else if (token.Value is "prints")
-            {
-                operations.Add(new Operation(OperationType.PrintString, token));
-            }
-            else if (token.Value is "alloc")
-            {
-                var nextToken = GetNextToken("Expected `[` after `alloc`, but got nothing.");
-                if (nextToken.Value is not "[")
+                var expectedBracket = tokens.Dequeue();
+                if (expectedBracket.Value is not "[")
                 {
-                    throw new Exception($"Expected `[` after `alloc`, but got {nextToken}.");
+                    throw new Exception($"Expected `[` after {token}, but got {expectedBracket}");
                 }
-                nextToken = GetNextToken($"Expected size after `[`, but got nothing.");
-                int size;
-                if (int.TryParse(nextToken.Value, out var number))
+
+                if (tokens.Count is 0)
                 {
-                    size = number;
+                    throw new Exception($"Expected size or struct after {expectedBracket}, but got nothing.");
                 }
-                else if (block.Structures.TryGetValue(nextToken.Value, out var structure))
+
+                var sizeOrStruct = tokens.Dequeue();
+                if (int.TryParse(sizeOrStruct.Value, out var size))
+                {
+                }
+                else if (context.TryGetStructure(sizeOrStruct.Value, out var structure))
                 {
                     size = structure.Size;
                 }
                 else
                 {
-                    throw new Exception($"Expected a number or structure type after `alloc` but got {nextToken}");
-                }
-                var endToken = GetNextToken($"Expected closing `]`, but got nothing.");
-                if (endToken.Value is not "]")
-                {
-                    throw new Exception($"Unclosed `alloc` size definition @ {token.Filename}:{token.Line}:{token.Column}");
+                    throw new Exception($"Expected size or struct after {expectedBracket}, but got {sizeOrStruct}");
                 }
 
-                var name = GetNextToken($"Expected name after `alloc[{nextToken.Value}]` but got nothing.");
-                if (IsKeyword(name.Value, out var keyword))
+                if (tokens.Count is 0)
                 {
-                    throw new Exception($"`{name.Value}` is a keyword ({keyword}) and cannot be used as a memory name @ {name.Filename}:{name.Line}:{name.Column}");
+                    throw new Exception($"Expected `]` after {sizeOrStruct}, but got nothing.");
                 }
-                if (!memories.TryAdd(name.Value, name))
+                expectedBracket = tokens.Dequeue();
+                if (expectedBracket.Value is not "]")
                 {
-                    throw new Exception($"`{name.Value}` is already allocated at {memories[name.Value]}");
-                }
-
-                operations.Add(new Operation(OperationType.AllocateMemory, token, new Meta(Number: size, Text: name.Value + modifier)));
-            }
-            else if (token.Value is "store")
-            {
-                operations.Add(new Operation(OperationType.StoreMemory, token));
-            }
-            else if (token.Value is "load")
-            {
-                operations.Add(new Operation(OperationType.LoadMemory, token));
-            }
-            else if (token.Value is "load-byte")
-            {
-                operations.Add(new Operation(OperationType.LoadByte, token));
-            }
-            else if (token.Value is "(ptr)")
-            {
-                operations.Add(new Operation(OperationType.Cast, token, new Meta(Type: DataType.Pointer)));
-            }
-            else if (token.Value is "syscall0")
-            {
-                operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 0)));
-            }
-            else if (token.Value is "syscall1")
-            {
-                operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 1)));
-            }
-            else if (token.Value is "syscall2")
-            {
-                operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 2)));
-            }
-            else if (token.Value is "syscall3")
-            {
-                operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 3)));
-            }
-            else if (token.Value is "syscall4")
-            {
-                operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 4)));
-            }
-            else if (token.Value is "syscall5")
-            {
-                operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 5)));
-            }
-            else if (token.Value is "syscall6")
-            {
-                operations.Add(new Operation(OperationType.Syscall, token, new Meta(Number: 6)));
-            }
-            else if (IsZeroTerminatedString(token, out var zerostr))
-            {
-                operations.Add(new Operation(OperationType.PushZeroString, token, new Meta(Text: zerostr)));
-            }
-            else if (IsString(token, out var str))
-            {
-                operations.Add(new Operation(OperationType.PushString, token, new Meta(Text: str)));
-            }
-            else if (token.Value is "yes")
-            {
-                operations.Add(new Operation(OperationType.PushBool, token, new Meta(Bool: true)));
-            }
-            else if (token.Value is "no")
-            {
-                operations.Add(new Operation(OperationType.PushBool, token, new Meta(Bool: false)));
-            }
-            else if (token.Value is ":")
-            {
-
-            }
-            else if (token.Value is ";")
-            {
-                if (tokens.Count > 0)
-                {
-                    throw new Exception($"Expected nothing after `;`, but got `{tokens.Peek().Value}` @ {tokens.Peek().Filename}:{tokens.Peek().Line}:{tokens.Peek().Column}");
-                }
-            }
-            else if (token.Value is "?")
-            {
-                if (block.NestedBlocks.Count is 0)
-                {
-                    throw new Exception($"Expected at least one branch block after ?, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-                }
-                var branch1 = block.NestedBlocks.Dequeue();
-                var firstBranch1Token = branch1.Tokens.Dequeue()
-                    ?? throw new Exception($"Expected yes: or no: after ?, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-                if (firstBranch1Token.Value is not "yes" and not "no")
-                {
-                    throw new Exception($"Expected yes: or no: after ?, but got `{firstBranch1Token.Value}` @ {firstBranch1Token.Filename}:{firstBranch1Token.Line}:{firstBranch1Token.Column}");
+                    throw new Exception($"Expected `]` after {sizeOrStruct}, but got {expectedBracket}");
                 }
 
-                var branch1Program = ParseProgram(branch1, memories, pinnedStackItems, modifier);
-
-                var endLabel = $"end_if_{token.Line}_{token.Column}{modifier}";
-                var expectedBranch2Token = firstBranch1Token.Value is "yes" ? "no" : "yes";
-
-                if (block.NestedBlocks.Count is 0 || block.NestedBlocks.Peek().Tokens.Peek().Value != expectedBranch2Token)
+                if (tokens.Count is 0)
                 {
-                    operations.Add(new Operation(firstBranch1Token.Value is "yes" ? OperationType.JumpIfZero : OperationType.JumpIfNotZero, token, new Meta(Text: endLabel)));
-                    operations.Add(new Operation(OperationType.Branch, token, new Meta(Number: 1)));
-                    program.NestedPrograms.Enqueue(branch1Program);
-                    operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
-                    continue;
-                }
-
-                var branch2 = block.NestedBlocks.Dequeue();
-                var firstBranch2Token = branch2.Tokens.Dequeue();
-                var branch2Program = ParseProgram(branch2, memories, pinnedStackItems, modifier);
-
-                ParsedProgram yesBlock;
-                ParsedProgram noBlock;
-                Token yesToken;
-                Token noToken;
-                if (firstBranch1Token.Value is "yes")
-                {
-                    yesBlock = branch1Program;
-                    noBlock = branch2Program;
-                    yesToken = firstBranch1Token;
-                    noToken = firstBranch2Token;
-                }
-                else
-                {
-                    yesBlock = branch2Program;
-                    noBlock = branch1Program;
-                    yesToken = firstBranch2Token;
-                    noToken = firstBranch1Token;
-                }
-                var startYesBlockLabel = $"start_yes_branch_{yesToken.Line}_{yesToken.Column}{modifier}";
-                operations.Add(new Operation(OperationType.JumpIfNotZero, token, new Meta(Text: startYesBlockLabel)));
-                operations.Add(new Operation(OperationType.Branch, token, new Meta(Number: 2)));
-
-                noBlock.Operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: endLabel)));
-                program.NestedPrograms.Enqueue(noBlock);
-
-                yesBlock.Operations.Insert(0, new Operation(OperationType.Label, token, new Meta(Text: startYesBlockLabel)));
-                program.NestedPrograms.Enqueue(yesBlock);
-
-                operations.Add(new Operation(OperationType.Label, token, new Meta(Text: endLabel)));
-            }
-            else if (token.Value is "while")
-            {
-                if (block.NestedBlocks.Count is 0)
-                {
-                    throw new Exception($"Expected identifier after `while`, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+                    throw new Exception($"Expected label for memory after {expectedBracket}, but got nothing.");
                 }
                 var label = tokens.Dequeue();
-                if (IsKeyword(label.Value, out var kwd))
+                if (Tokens.IsReserved(label.Value))
                 {
-                    throw new Exception($"Expected identifier after `while`, but got an existing keyword ({kwd}) {token}.");
+                    throw new Exception($"Cannot use reserved keyword {label} as a memory label.");
                 }
-
-                pinnedStackItems ??= new Dictionary<string, int>();
-                if (pinnedStackItems.TryGetValue(label.Value, out var current))
-                {
-                    pinnedStackItems[label.Value] = current + 1;
-                }
-                else
-                {
-                    pinnedStackItems[label.Value] = 1;
-                }
-
-                if (block.NestedBlocks.Count < 2)
-                {
-                    throw new Exception($"Expected at least two blocks after while, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
-                }
-                var conditionBlock = block.NestedBlocks.Dequeue();
-                var whileBlock = block.NestedBlocks.Dequeue();
-
-                var whileStartLabel = $"while_{token.Line}_{token.Column}{modifier}";
-                var whileEndLabel = $"end_while_{token.Line}_{token.Column}{modifier}";
-
-                operations.Add(new Operation(OperationType.PinStackElement, label));
-
-                operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileStartLabel)));
-                operations.Add(new Operation(OperationType.Loop, token));
-
-                var conditionProgram = ParseProgram(conditionBlock, memories, pinnedStackItems, modifier);
-                conditionProgram.Operations.Insert(0, new Operation(OperationType.PushPinnedStackItem, label));
-                conditionProgram.Operations.Add(new Operation(OperationType.JumpIfZero, token, new Meta(Text: whileEndLabel)));
-                program.NestedPrograms.Enqueue(conditionProgram);
-
-                var whileProgram = ParseProgram(whileBlock, memories, pinnedStackItems, modifier);
-                whileProgram.Operations.Add(new Operation(OperationType.UpdatePinnedStackElement, label));
-                program.NestedPrograms.Enqueue(whileProgram);
-                operations.Add(new Operation(OperationType.Jump, token, new Meta(Text: whileStartLabel)));
-                operations.Add(new Operation(OperationType.Label, token, new Meta(Text: whileEndLabel)));
-                operations.Add(new Operation(OperationType.PushPinnedStackItem, label));
-                operations.Add(new Operation(OperationType.UnpinStackElement, label));
-                if (pinnedStackItems[label.Value] is 1)
-                {
-                    pinnedStackItems.Remove(label.Value);
-                }
-                else
-                {
-                    pinnedStackItems[label.Value] -= 1;
-                }
+                var uniqueLabel = context.AddMemory(label);
+                meta.AddMemory(uniqueLabel, size);
             }
-            else if (token.Value is "using")
+            else if (token.Value is Tokens.Keyword.Duplicate)
             {
-                if (block.NestedBlocks.Count < 2)
+                programPieces.Add(Instructions.Duplicate(token));
+            }
+            else if (token.Value is Tokens.Keyword.Exit)
+            {
+                programPieces.Add(Instructions.Exit(token));
+            }
+            else if (token.Value is Tokens.Keyword.PinStackElements)
+            {
+                var pins = new List<PinnedStackItem>();
+                var toBePinned = new Stack<Token>();
+                while (tokens.Count > 0)
                 {
-                    throw new Exception($"Expected at least two blocks after using, but got {block.NestedBlocks.Count} @ {token.Filename}:{token.Line}:{token.Column}");
-                }
-                var assignmentBlock = block.NestedBlocks.Dequeue();
-                if (assignmentBlock.Tokens.Count is 0)
-                {
-                    throw new Exception($"Expected at least one assignment, but got none @ {token.Filename}:{token.Line}:{token.Column}");
-                }
-                var assignments = new List<Token>();
-                while (assignmentBlock.Tokens.Count > 0)
-                {
-                    var assignment = assignmentBlock.Tokens.Dequeue();
-                    if (assignment.Value is ":")
+                    var pinToken = tokens.Dequeue();
+                    if (pinToken.Value is ":")
                     {
                         break;
                     }
-                    if (IsKeyword(assignment.Value, out var keyword))
+                    if (Tokens.IsReserved(pinToken.Value))
                     {
-                        throw new Exception($"Expected identifier, but got an existing keyword ({keyword}) {token}.");
+                        throw new Exception($"Cannot use reserved keyword {pinToken} as a pinned stack item.");
                     }
-                    assignments.Add(assignment);
+                    toBePinned.Push(pinToken);
                 }
-                if (assignments.Count is 0)
+                while (toBePinned.Count > 0)
                 {
-                    throw new Exception($"Expected at least one assignment, but got none @ {token.Filename}:{token.Line}:{token.Column}");
+                    var pinnedStackItem = meta.PinStackItem(toBePinned.Pop());
+                    programPieces.Add(Instructions.PinStackItem(pinnedStackItem));
+                    pins.Add(pinnedStackItem);
                 }
-
-                pinnedStackItems ??= new Dictionary<string, int>();
-                for (var i = assignments.Count - 1; i >= 0; i--)
+                var program = ParseProgram(tokens, meta, context, ";");
+                if (tokens.Count is 0)
                 {
-                    if (pinnedStackItems.ContainsKey(assignments[i].Value))
-                    {
-                        pinnedStackItems[assignments[i].Value] += 1;
-                    }
-                    else
-                    {
-                        pinnedStackItems[assignments[i].Value] = 1;
-                    };
-                    operations.Add(new Operation(OperationType.PinStackElement, assignments[i]));
+                    throw new Exception($"Unclosed using block.");
                 }
-                operations.Add(new Operation(OperationType.UsingBlock, token));
-                var consumingBlock = block.NestedBlocks.Dequeue();
-                var consumingProgram = ParseProgram(consumingBlock, memories, pinnedStackItems, modifier);
-                program.NestedPrograms.Enqueue(consumingProgram);
-
-                foreach (var assignment in assignments)
+                var finalToken = tokens.Dequeue();
+                if (finalToken.Value is not ";")
                 {
-                    operations.Add(new Operation(OperationType.UnpinStackElement, assignment));
-                    if (pinnedStackItems[assignment.Value] is 1)
-                    {
-                        pinnedStackItems.Remove(assignment.Value);
-                    }
-                    else
-                    {
-                        pinnedStackItems[assignment.Value] -= 1;
-                    }
+                    throw new Exception($"Expected `;` after {token}, but got {finalToken}");
+                }
+                programPieces.AddRange(program);
+                foreach (var pin in pins)
+                {
+                    meta.UnpinStackItem(pin.Token.Value);
                 }
             }
-            else if (token.Value is "include")
+            else if (context.TryGetMemory(token, out var memoryLabel))
             {
-                throw new Exception("Includes should have been handled by now.");
+                programPieces.Add(Instructions.PushMemoryPointer(token, memoryLabel));
             }
-            else if (token.Value is "struct")
+            else if (token.Value.Contains('.'))
             {
-                throw new Exception("Structs should have been parsed by now.");
+                var parts = token.Value.Split('.');
+                if (parts.Length > 2)
+                {
+                    throw new Exception($"Unknown token {token}");
+                }
+                var structName = parts[0];
+                var fieldName = parts[1];
+                if (!context.TryGetStructure(structName, out var structure))
+                {
+                    throw new Exception($"Unknown structure {structName}.");
+                }
+                if (!structure.Fields.TryGetValue(fieldName, out var field))
+                {
+                    throw new Exception($"Unknown member {fieldName}.");
+                }
+                programPieces.Add(Instructions.StructFieldOffset(token, field.Offset));
             }
-            else if (token.Value is "inspect")
+            else if (token.Value is Tokens.Keyword.Load)
             {
-                operations.Add(new Operation(OperationType.Inspect, token));
+                programPieces.Add(Instructions.Load(token));
             }
-            else if (token.Value is "aka")
+            else if (token.Value is Tokens.Keyword.LoadByte)
             {
-                throw new Exception("Constants should have been parsed by now.");
+                programPieces.Add(Instructions.LoadByte(token));
             }
-            else if (token.Value is "exit")
+            else if (token.Value is Tokens.Keyword.Store)
             {
-                operations.Add(new Operation(OperationType.Exit, token));
+                programPieces.Add(Instructions.Store(token));
+            }
+            else if (token.Value is Tokens.Keyword.Inspect)
+            {
+                var stack = new TypeStack();
+                foreach (var programPiece in programPieces)
+                {
+                    programPiece.TypeCheck(stack);
+                }
+                Console.WriteLine(stack);
+            }
+            else if (token.Value is Tokens.Keyword.Cast)
+            {
+                if (tokens.Count is 0)
+                {
+                    throw new Exception($"Expected type after {token}, but got nothing.");
+                }
+                var typeToken = tokens.Dequeue();
+                if (typeToken.Value is not Tokens.DataType.Number and not Tokens.DataType.Pointer)
+                {
+                    throw new Exception($"Expected type after {token}, but got {typeToken}.");
+                }
+                if (typeToken.Value is Tokens.DataType.Number)
+                {
+                    programPieces.Add(Instructions.Cast(token, DataType.Number));
+                }
+                else if (typeToken.Value is Tokens.DataType.Pointer)
+                {
+                    programPieces.Add(Instructions.Cast(token, DataType.Pointer));
+                }
             }
             else
             {
@@ -695,22 +464,278 @@ internal static class Parser
             }
         }
 
-        return program;
+        return programPieces;
+    }
 
-        void ParseOperator(Token token, Operator operatorType)
+    private static Loop ParseLoop(Token token, Queue<Token> tokens, GlobalContext meta, Context context)
+    {
+        if (tokens.Count is 0)
         {
-            operations.Add(new Operation(OperationType.Operator, token, new Meta(Operator: operatorType)));
+            throw new Exception($"Expected loop condition, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+        }
+        var iteratorLabel = tokens.Dequeue();
+        if (Tokens.IsReserved(iteratorLabel.Value))
+        {
+            throw new Exception($"Cannot use reserved keyword {iteratorLabel} as a loop iterator.");
         }
 
-        Token GetNextToken(string failedMessage)
+        var iterator = meta.PinStackItem(iteratorLabel);
+
+        if (tokens.Count is 0)
         {
-            if (tokens.Count == 0)
+            throw new Exception($"Expected condition after loop iterator, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+        }
+        var condition = ParseProgram(tokens, meta, context, ":");
+        var endToken = tokens.Dequeue();
+        if (endToken.Value is not ":")
+        {
+            throw new Exception($"Expected `:` after loop condition, but got {endToken}");
+        }
+        var body = ParseProgram(tokens, meta, context, ";");
+        var endBodyToken = tokens.Dequeue();
+        if (endBodyToken.Value is not ";")
+        {
+            throw new Exception($"Expected `;` after loop body, but got {endBodyToken}");
+        }
+
+        meta.UnpinStackItem(iteratorLabel.Value);
+        return new(token, iterator, condition, body);
+    }
+
+
+    private static Branching ParseBranches(Token token, Queue<Token> tokens, GlobalContext meta, Context context, string? modifier = null)
+    {
+        List<IProgramPiece>? yesBranch = null;
+        List<IProgramPiece>? noBranch = null;
+
+        if (tokens.Count is 0)
+        {
+            throw new Exception($"Expected yes: or no: after {token}, but got nothing.");
+        }
+        var firstBranch1Token = tokens.Dequeue();
+        if (firstBranch1Token.Value is not "yes" and not "no")
+        {
+            throw new Exception($"Expected `yes:` or `no:` after ?, but got {firstBranch1Token}");
+        }
+        if (tokens.Count is 0)
+        {
+            throw new Exception($"Expected `:` after {firstBranch1Token}, but got nothing.");
+        }
+        var firstBranchBlockStartToken = tokens.Dequeue();
+        if (firstBranchBlockStartToken.Value is not ":")
+        {
+            throw new Exception($"Expected `:` after {firstBranch1Token}, but got {firstBranchBlockStartToken}");
+        }
+        var branch1Program = ParseProgram(tokens, meta, context, ";");
+        var branchEndToken = tokens.Dequeue();
+        if (branchEndToken.Value is not ";")
+        {
+            throw new Exception($"Expected `;` after {firstBranch1Token}, but got {branchEndToken}");
+        }
+
+        if (firstBranch1Token.Value is "yes")
+        {
+            yesBranch = branch1Program;
+        }
+        else
+        {
+            noBranch = branch1Program;
+        }
+
+        var expectedBranch2Token = firstBranch1Token.Value is "yes" ? "no" : "yes";
+
+        if (tokens.Count < 3 || tokens.Peek().Value != expectedBranch2Token)
+        {
+            return new(token, yesBranch, noBranch);
+        }
+
+        var firstBranch2Token = tokens.Dequeue();
+
+        if (tokens.Peek().Value is not ":")
+        {
+            // TODO: clean this shit up
+            var newTokens = new Queue<Token>();
+            newTokens.Enqueue(firstBranch2Token);
+            while (tokens.Count > 0)
             {
-                throw new Exception(failedMessage);
+                newTokens.Enqueue(tokens.Dequeue());
             }
-            return tokens?.Dequeue()
-                ?? throw new Exception("Unexpected block start");
+            while (newTokens.Count > 0)
+            {
+                tokens.Enqueue(newTokens.Dequeue());
+            }
+
+            return new(token, yesBranch, noBranch);
         }
+        tokens.Dequeue();
+        var branch2Program = ParseProgram(tokens, meta, context, ";");
+        var endBranch2Token = tokens.Dequeue();
+        if (endBranch2Token.Value is not ";")
+        {
+            throw new Exception($"Expected `;` after {firstBranch2Token}, but got {endBranch2Token}");
+        }
+
+
+        if (firstBranch1Token.Value is "yes")
+        {
+            noBranch = branch2Program;
+        }
+        else
+        {
+            yesBranch = branch2Program;
+        }
+        return new(token, yesBranch, noBranch);
+    }
+
+    private static List<DataType> ParseDataTypes(Queue<Token> tokens, string? terminationToken = null)
+    {
+        if (tokens.Count is 0)
+        {
+            throw new Exception($"Expected contract, but got nothing.");
+        }
+
+        var types = new List<DataType>();
+
+        while (tokens.Count > 0 && tokens.Peek().Value != terminationToken)
+        {
+            var token = tokens.Dequeue();
+
+            if (token.Value is Tokens.DataType.Number)
+            {
+                types.Add(DataType.Number);
+            }
+            else if (token.Value is Tokens.DataType.Pointer)
+            {
+                types.Add(DataType.Pointer);
+            }
+            else if (token.Value is Tokens.DataType.Boolean)
+            {
+                types.Add(DataType.Number);
+            }
+            else if (token.Value is Tokens.DataType.String)
+            {
+                types.Add(DataType.Number);
+                types.Add(DataType.Pointer);
+            }
+            else if (token.Value is Tokens.DataType.NullTerminatedString)
+            {
+                types.Add(DataType.Pointer);
+            }
+            else
+            {
+                throw new Exception($"Unknown type {token}");
+            }
+        }
+
+        return types;
+    }
+
+    private static Context ParseInclude(Token token, Queue<Token> tokens, GlobalContext meta)
+    {
+        if (tokens.Count is 0)
+        {
+            throw new Exception($"Expected path after include, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+        }
+        var includePath = tokens.Dequeue();
+        if (!IsString(includePath, out var path))
+        {
+            throw new Exception($"Expected path after include, but got {includePath}");
+        }
+        var fullPath = Path.GetFullPath(path);
+        if (!File.Exists(fullPath))
+        {
+            throw new Exception($"Cannot include {path}({fullPath}) because it does not exist at {token}.");
+        }
+        Console.WriteLine($"Including {path}");
+        var words = LexFile(path);
+
+        return MetaEvaluate(words, meta, new(), null, out _, out _);
+    }
+
+    private static Constant ParseConstant(Token token, Queue<Token> tokens)
+    {
+        if (tokens.Count < 2)
+        {
+            throw new Exception($"Expected at least two tokens after `aka`, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+        }
+        var nameToken = tokens.Dequeue();
+        if (Tokens.IsReserved(nameToken.Value))
+        {
+            throw new Exception($"Expected identifier, but got an existing keyword {nameToken.Value}.");
+        }
+        var constant = tokens.Dequeue();
+        if (int.TryParse(constant.Value, out var constInt))
+        {
+            return new(nameToken, DataType.Number, Number: constInt);
+        }
+        else if (IsString(constant, out var constString))
+        {
+            return new(nameToken, DataType.String, Text: constString);
+        }
+        else if (IsZeroTerminatedString(constant, out var constZeroString))
+        {
+            return new(nameToken, DataType.ZeroTerminatedString, Text: constZeroString);
+        }
+        else
+        {
+            throw new Exception($"Expected number after `aka`, but got {constant} @ {constant.Filename}:{constant.Line}:{constant.Column}");
+        }
+    }
+
+    private static Structure ParseStructure(Token token, Queue<Token> tokens)
+    {
+        var structName = tokens.Dequeue();
+        var fields = new Dictionary<string, StructureField>();
+
+        if (Tokens.IsReserved(structName.Value))
+        {
+            throw new Exception($"Expected identifier, but got an existing keyword {structName}.");
+        }
+
+        if (tokens.Count is 0)
+        {
+            throw new Exception($"Expected block, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+        }
+        tokens.Dequeue();
+
+        var offset = 0;
+        while (tokens.Count > 0)
+        {
+            var member = tokens.Dequeue();
+            if (member.Value is ";")
+            {
+                break;
+            }
+            if (Tokens.IsReserved(member.Value))
+            {
+                throw new Exception($"Expected identifier, but got an existing keyword {member}.");
+            }
+
+            var sizeToken = tokens.Dequeue();
+            if (sizeToken.Value is ";")
+            {
+                break;
+            }
+
+            if (!int.TryParse(sizeToken.Value, out var size))
+            {
+                throw new Exception($"Expected integer, but got {sizeToken}.");
+            }
+
+            if (tokens.Count is 0)
+            {
+                throw new Exception($"Expected identifier, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+
+            fields.Add(member.Value, new(offset, size, member.Value));
+            offset += size;
+
+            if (tokens.Count is 0)
+            {
+                throw new Exception($"Unclosed struct definition @ {token.Filename}:{token.Line}:{token.Column}");
+            }
+        }
+        return new Structure(structName, fields);
     }
 
     internal static bool IsString(Token token, out string value)
@@ -734,196 +759,15 @@ internal static class Parser
         value = "";
         return false;
     }
-
-    internal static bool IsKeyword(string word, out Keyword keyword)
-    {
-        keyword = word switch
-        {
-            "dup" => Keyword.Duplicate,
-            "drop" => Keyword.Drop,
-            "over" => Keyword.Over,
-            "swap" => Keyword.Swap,
-            "print" => Keyword.Print,
-            "prints" => Keyword.PrintString,
-            "+" => Keyword.Addition,
-            "-" => Keyword.Subtraction,
-            "*" => Keyword.Multiplication,
-            "/" => Keyword.Division,
-            "%" => Keyword.Modulo,
-            "&" => Keyword.And,
-            "|" => Keyword.Or,
-            "^" => Keyword.Xor,
-            "==" => Keyword.StringEqual,
-            "!==" => Keyword.StringNotEqual,
-            "=" => Keyword.Equal,
-            "!=" => Keyword.NotEqual,
-            "<" => Keyword.LessThan,
-            "<=" => Keyword.LessThanOrEqual,
-            ">" => Keyword.GreaterThan,
-            ">=" => Keyword.GreaterThanOrEqual,
-            "yes" => Keyword.Yes,
-            "no" => Keyword.No,
-            "?" => Keyword.ConditionalExpression,
-            "yes:" => Keyword.YesBranch,
-            "no:" => Keyword.NoBranch,
-            "include" => Keyword.Include,
-            "using" => Keyword.Using,
-            "while" => Keyword.While,
-            "alloc[" => Keyword.Allocate,
-            "load" => Keyword.Load,
-            "store" => Keyword.Store,
-            "load-byte" => Keyword.LoadByte,
-            "(ptr)" => Keyword.CastToPointer,
-            "syscall0" => Keyword.Syscall0,
-            "syscall1" => Keyword.Syscall1,
-            "syscall2" => Keyword.Syscall2,
-            "syscall3" => Keyword.Syscall3,
-            "syscall4" => Keyword.Syscall4,
-            "syscall5" => Keyword.Syscall5,
-            "syscall6" => Keyword.Syscall6,
-            _ => Keyword.Unknown,
-        };
-        return keyword != Keyword.Unknown;
-    }
 }
 
-internal record Block(Queue<Token> Tokens, Queue<Block> NestedBlocks, Dictionary<string, Block> Functions, Dictionary<string, Constant> Constants, Dictionary<string, Structure> Structures)
+internal record Structure(Token Token, Dictionary<string, StructureField> Fields)
 {
-    internal Block Copy()
-    {
-        return new Block(
-            new Queue<Token>(new Queue<Token>(Tokens)),
-            new Queue<Block>(new Queue<Block>(NestedBlocks.Select(b => b.Copy()))),
-            new Dictionary<string, Block>(Functions),
-            new Dictionary<string, Constant>(Constants),
-            new Dictionary<string, Structure>(Structures));
-    }
-}
-
-internal record Constant(DataType Type, int? Number = null, string? Text = null);
-
-internal record Meta(int? Number = null, string? Text = null, Operator? Operator = null, bool? Bool = null, DataType? Type = null);
-
-internal record Operation(OperationType Type, Token Token, Meta? Data = null);
-
-internal record ParsedProgram(List<Operation> Operations, Queue<ParsedProgram> NestedPrograms);
-
-internal record Structure(string Name, Dictionary<string, StructureField> Fields)
-{
+    public string Name => Token.Value;
     internal int Size => Fields.Sum(f => f.Value.Size);
 }
 
 internal record StructureField(int Offset, int Size, string Name);
-
-
-internal enum Keyword
-{
-    Duplicate,
-    Drop,
-    Over,
-    Swap,
-    Print,
-    PrintString,
-    Addition,
-    Subtraction,
-    Multiplication,
-    Division,
-    Modulo,
-    And,
-    Or,
-    Xor,
-    StringEqual,
-    StringNotEqual,
-    Equal,
-    NotEqual,
-    LessThan,
-    LessThanOrEqual,
-    GreaterThan,
-    GreaterThanOrEqual,
-    Yes,
-    No,
-    ConditionalExpression,
-    YesBranch,
-    NoBranch,
-    Include,
-    Using,
-    While,
-    Allocate,
-    Load,
-    Store,
-    LoadByte,
-    CastToPointer,
-    Syscall0,
-    Syscall1,
-    Syscall2,
-    Syscall3,
-    Syscall4,
-    Syscall5,
-    Syscall6,
-    Unknown,
-}
-
-enum Operator
-{
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    Modulo,
-
-    Not,
-
-    And,
-    Or,
-    Xor,
-
-    LeftShift,
-    RightShift,
-
-    Equal,
-    NotEqual,
-    LessThan,
-    LessThanOrEqual,
-    GreaterThan,
-    GreaterThanOrEqual,
-    StringEqual,
-}
-
-enum OperationType
-{
-    Print,
-    PrintString,
-    JumpIfZero,
-    JumpIfNotZero,
-    Label,
-    Jump,
-    Drop,
-    Over,
-    Swap,
-    PushNumber,
-    PushString,
-    PushZeroString,
-    PushBool,
-    PushDuplicate,
-    PushPinnedStackItem,
-    Operator,
-    UsingBlock,
-    PinStackElement,
-    UnpinStackElement,
-    UpdatePinnedStackElement,
-    Syscall,
-    AllocateMemory,
-    PushMemory,
-    StoreMemory,
-    LoadMemory,
-    LoadByte,
-    Cast,
-    Branch,
-    Loop,
-    Inline,
-    Inspect,
-    Exit,
-}
 
 enum DataType
 {
@@ -931,4 +775,5 @@ enum DataType
     Pointer,
     String,
     ZeroTerminatedString,
+    Unknown,
 }
