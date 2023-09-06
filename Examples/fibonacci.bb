@@ -1,4 +1,4 @@
-next(): 
+next(int int) int int: 
    over over + 0 =?
    yes: drop 1;
    no: swap over +;

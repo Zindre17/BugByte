@@ -45,7 +45,7 @@ using line-count:
             drop 0 current store
         ;
         no:
-            linenr 16 * lines + 8 + load
+            linenr 16 * lines + 8 + load as ptr
             over swap parse-number
             current load + current store
         ;

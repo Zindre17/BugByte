@@ -14,7 +14,7 @@ alloc[8] sum2
 using line-count:
     0 while linenr line-count < :
         linenr 16 *     lines + load
-        linenr 16 * 8 + lines + load (ptr)
+        linenr 16 * 8 + lines + load as ptr
         over over "A X" == ? yes: 4 sum load + sum store 3 sum2 load + sum2 store;
         over over "A Y" == ? yes: 8 sum load + sum store 4 sum2 load + sum2 store;
         over over "A Z" == ? yes: 3 sum load + sum store 8 sum2 load + sum2 store;

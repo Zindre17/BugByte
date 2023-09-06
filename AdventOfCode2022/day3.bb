@@ -14,12 +14,12 @@ alloc[8] sum2
 using line-count:
     0 while linenr line-count < :
         linenr 16 *     lines + load 
-        linenr 16 * 8 + lines + load (ptr)
-        using size ptr:
+        linenr 16 * 8 + lines + load as ptr
+        using size pointer:
             size 2 /
-            dup ptr + 
+            dup pointer + 
             using half-size second-half:
-                half-size ptr get-items-bitwise 
+                half-size pointer get-items-bitwise 
                 half-size second-half get-items-bitwise 
                 &
                 get-priority-sum 
@@ -32,11 +32,11 @@ using line-count:
     
     0 while index line-count < :
         index 0 + 16 *     lines + load
-        index 0 + 16 * 8 + lines + load (ptr)
+        index 0 + 16 * 8 + lines + load as ptr
         index 1 + 16 *     lines + load
-        index 1 + 16 * 8 + lines + load (ptr)
+        index 1 + 16 * 8 + lines + load as ptr
         index 2 + 16 *     lines + load
-        index 2 + 16 * 8 + lines + load (ptr)
+        index 2 + 16 * 8 + lines + load as ptr
         using size1 ptr1 size2 ptr2 size3 ptr3:
             size1 ptr1 get-items-bitwise 
             size2 ptr2 get-items-bitwise 
@@ -55,12 +55,12 @@ using line-count:
 "part2: " prints sum2 load print
 
 # size ptr -> number
-get-items-bitwise():
+get-items-bitwise(int ptr) int:
     alloc[8] items
     0 items store
-    using size ptr:
+    using size pointer:
         0 while i size <:
-            i ptr + load-byte
+            i pointer + load-byte
             dup 97 < ? yes: 
                 # Uppercase (27 - 52)
                 64 - 26 +
@@ -80,7 +80,7 @@ get-items-bitwise():
 ;
 
 # number -> number
-get-priority-sum():
+get-priority-sum(int) int:
     alloc[8] score   
     0 score store
     using items:

@@ -9,7 +9,7 @@ lines get-lines
 
 alloc[8] sum
 alloc[8] sum2
-inc():
+inc(ptr):
     dup load 1 + swap store
 ;
 
@@ -50,30 +50,30 @@ using line-count:
 "part 1: " prints sum load print
 "part 2: " prints sum2 load print
 
-parse-line():
+parse-line(int ptr) int int int int:
     using line-index lines:
         line-index 16 *     lines + load
-        line-index 16 * 8 + lines + load (ptr)
+        line-index 16 * 8 + lines + load as ptr
     ;
-    using size ptr:
+    using size pointer:
         size 0 = ? 
         yes: 1 2 3 4;
         no:
-            size ptr "," index-of
+            size pointer "," index-of
             using index:
-                index ptr parse-elf-range
-                size 1 - index - ptr 1 + index + parse-elf-range
+                index pointer parse-elf-range
+                size 1 - index - pointer 1 + index + parse-elf-range
             ;
         ;
        
     ;
 ;
 
-index-of():
+index-of(int ptr int ptr)int:
     load-byte swap drop
-    using size ptr char:
+    using size pointer char:
         0 while i size < :
-            i ptr + load-byte char = ?
+            i pointer + load-byte char = ?
             yes: i size + ;
             no: i 1 + ;
         ;
@@ -81,12 +81,12 @@ index-of():
     ;
 ;
 
-parse-elf-range():
-    using size ptr:
-        size ptr "-" index-of
+parse-elf-range(int ptr) int int:
+    using size pointer:
+        size pointer "-" index-of
         using index:
-            index ptr parse-number
-            size 1 - index - ptr 1 + index + parse-number
+            index pointer parse-number
+            size 1 - index - pointer 1 + index + parse-number
         ;
     ;
 ;

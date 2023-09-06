@@ -1,14 +1,14 @@
 # fd -> 0 | error
 aka close_id 3
-close(): close_id syscall1;
+close(int)int: close_id syscall1;
 
 # size buffer fd -> size
 aka read_id 0
-read(): read_id syscall3;
+read(int ptr int)int: read_id syscall3;
 
 # mode flags path -> fd | error
 aka open_id 2
-open(): open_id syscall3;
+open(int int ptr)int: open_id syscall3;
 
 struct stat:
     st_dev 8
@@ -33,20 +33,20 @@ struct stat:
 
 # statbuf path -> 0 | error
 aka stat_id 4
-stat(): stat_id syscall2;
+stat(ptr ptr)int: stat_id syscall2;
 
 # statbuf fd -> 0 | error
 aka fstat_id 5
-fstat(): fstat_id syscall2;
+fstat(ptr int)int: fstat_id syscall2;
 
 aka mmap_id 9
 aka MAP_PRIVATE 2
 aka PROT_READ 1
 #  offset fd flags prot len addr  -> addr | error
-mmap(): mmap_id syscall6;
+mmap(int int int int int ptr)ptr: mmap_id syscall6 as ptr;
 
 # path -> size ptr
-read-file():
+read-file(ptr)int ptr:
     alloc[stat] statbuf
     
     0 swap 0 swap open
@@ -57,24 +57,23 @@ read-file():
         dup 0 < ? yes: "Error statting: " prints dup print dup exit;
         drop
         
-        0 fd MAP_PRIVATE PROT_READ statbuf stat.st_size load 0 mmap
-        dup 0 < ? yes: "Error mmaping: " prints dup print dup exit;
+        0 fd MAP_PRIVATE PROT_READ statbuf stat.st_size load 0 as ptr mmap
+        dup as int 0 < ? yes: "Error mmaping: " prints dup print dup as int exit;
         
         fd close
         dup 0 < ? yes: "Error closing: " prints dup print dup exit;
         drop
         
-        statbuf stat.st_size load swap (ptr)
+        statbuf stat.st_size load swap 
     ;
 ;
 
 # size ptr buffer -> count
-get-lines():
+get-lines(int ptr ptr) int:
     alloc[8] count
     alloc[8] prev
     0 count store
     0 prev store
-
     using size file lines:  
         0 
         while index size < :

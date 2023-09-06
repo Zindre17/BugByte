@@ -1,8 +1,8 @@
 # size ptr -> int
-parse-number():
+parse-number(int ptr) int:
     alloc[8] number
     0 number store
-    using size ptr :
+    using size pointer :
         1 
         while index size <=:
             1
@@ -12,11 +12,11 @@ parse-number():
                 swap 10 * swap
             ;
             drop 
-            ptr size + index - (ptr) load-byte 48 -
+            pointer size + index - as ptr load-byte 48 -
             dup 0 >=?
             yes: dup 10 <?
                 yes:
-                    over * 
+                    over as int * 
                     dup number load + number store
                 ;
             ;
