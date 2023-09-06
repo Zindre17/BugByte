@@ -86,8 +86,12 @@
 					"match": "\\b(include)\\b"
 				},
 				{
+					"name": "storage.modifier.bugbyte",
+					"match": "\\b(ptr|int)\\b"
+				},
+				{
 					"name": "constant.language.bugbyte",
-					"match": "\\b(dup|drop|over|swap|print|prints|store|load(\\-byte)?)\\b"
+					"match": "\\b(dup|drop|over|swap|print|prints|store|load(\\-byte)?|as)\\b"
 				},
 				{
 					"name": "constant.numeric.bugbyte",
