@@ -243,6 +243,10 @@ internal static class Parser
             {
                 programPieces.Add(Instructions.Print(token));
             }
+            else if (token.Value is Tokens.Keyword.PrintChar)
+            {
+                programPieces.Add(Instructions.PrintChar(token));
+            }
             else if (token.Value is Tokens.Keyword.PrintString)
             {
                 programPieces.Add(Instructions.PrintString(token));

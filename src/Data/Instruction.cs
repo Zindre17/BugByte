@@ -224,6 +224,20 @@ internal static class Instructions
         });
     }
 
+    internal static Instruction PrintChar(Token token)
+    {
+        var assembly = new[]{
+            $";-- print byte --",
+            $"  mov rsi, rsp",
+            $"  mov rdx, 1",
+            $"  mov rdi, 1",
+            $"  mov rax, 1",
+            $"  syscall",
+            $"  pop rax",
+        };
+        return new(token, assembly, Contract.Consumer(DataType.Number));
+    }
+
     internal static Instruction PrintString(Token token)
     {
         var assembly = new[]{

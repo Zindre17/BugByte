@@ -153,6 +153,7 @@ public static class Tokens
         public const string Store = "store";
 
         public const string Print = "print";
+        public const string PrintChar = "printc";
         public const string PrintString = "prints";
 
         public const string Syscall0 = "syscall0";
