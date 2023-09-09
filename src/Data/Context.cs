@@ -86,6 +86,10 @@ internal record Context
             memory = GenerateMemoryLabel(label.Value);
             return true;
         }
+        else if (Parent is not null)
+        {
+            return Parent.TryGetMemory(label, out memory);
+        }
         memory = "";
         return false;
     }
