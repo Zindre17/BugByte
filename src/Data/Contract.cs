@@ -11,7 +11,7 @@ internal record Contract(DataType[] In, DataType[] Out)
     {
         if (stack.Count < In.Length)
         {
-            throw new Exception($"Not enough elements on the stack. Expected {In.Length} elements, but got {stack.Count}.");
+            throw new Exception($"Not enough elements on the stack ({token}). Expected {In.Length} elements, but got {stack.Count}.");
         }
         for (var index = In.Length - 1; index >= 0; index--)
         {

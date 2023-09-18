@@ -25,9 +25,10 @@ internal record Function(Token Token, Contract Contract, List<IProgramPiece> Bod
         while (stack.Count > 0)
         {
             var (type, _) = stack.Pop();
-
-            if (type != outs.Pop())
+            var expected = outs.Pop();
+            if (type != expected)
             {
+                Console.WriteLine($"Did not produce expected type: {type} != {expected}\n{stack}");
                 return false;
             }
         }
@@ -38,7 +39,7 @@ internal record Function(Token Token, Contract Contract, List<IProgramPiece> Bod
     {
         if (!MatchesContract())
         {
-            throw new Exception($"Function {Token} does not match its contract.");
+            throw new Exception($"Function {Token} does not match its contract.\n{currentStack}");
         }
         Contract.TypeCheck(Token, currentStack);
     }

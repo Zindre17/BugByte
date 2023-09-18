@@ -21,6 +21,20 @@ internal record Context
     private Dictionary<string, Constant> Constants { get; } = new();
     private Dictionary<string, Structure> Structures { get; } = new();
 
+    public bool IsReserved(string name)
+    {
+        if (Memory.ContainsKey(name) || Functions.ContainsKey(name) || Constants.ContainsKey(name))
+        {
+            return true;
+        }
+
+        if (Parent is null)
+        {
+            return Tokens.IsReserved(name);
+        }
+        return false;
+    }
+
     public void AddFunction(FunctionMeta function)
     {
         if (!Functions.TryAdd(function.Name.Value, function))
@@ -63,7 +77,7 @@ internal record Context
 
     private string GenerateMemoryLabel(string label)
     {
-        return $"{Name.Replace('-', '_')}_{label}";
+        return $"{Name.Replace('-', '_')}_{label.Replace('-', '_')}";
     }
 
     internal string AddMemory(Token label)
@@ -74,7 +88,14 @@ internal record Context
             {
                 throw new Exception($"Duplicate memory label {label} and {token}.");
             }
+            return GenerateMemoryLabel(label.Value);
         }
+
+        if (IsReserved(label.Value))
+        {
+            throw new Exception($"Cannot use reserved keyword {label} as a memory label.");
+        }
+
         Memory.TryAdd(label.Value, label);
         return GenerateMemoryLabel(label.Value);
     }

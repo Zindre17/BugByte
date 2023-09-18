@@ -134,7 +134,7 @@ internal static class Instructions
             var (top, _) = stack.Pop();
             if (top is not DataType.Pointer)
             {
-                throw new Exception($"Expected pointer on the stack, but got {top}.");
+                throw new Exception($"Expected pointer on the stack, but got {top} ({token})");
             }
             stack.Push((DataType.Number, token));
         });

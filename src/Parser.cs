@@ -45,17 +45,17 @@ internal static class Parser
             }
             else if (token.Value is Tokens.Keyword.Struct)
             {
-                innerContext.AddStructure(ParseStructure(token, tokenQueue));
+                innerContext.AddStructure(ParseStructure(token, tokenQueue, innerContext));
             }
             else if (token.Value is Tokens.Keyword.ConstantDefinition)
             {
-                innerContext.AddConstant(ParseConstant(token, tokenQueue));
+                innerContext.AddConstant(ParseConstant(token, tokenQueue, innerContext));
             }
             else if (tokenQueue.Count > 0 && tokenQueue.Peek().Value is "(")
             {
                 var functionName = token.Value;
                 tokenQueue.Dequeue();
-                if (Tokens.IsReserved(functionName))
+                if (innerContext.IsReserved(functionName))
                 {
                     throw new Exception($"Cannot use reserved keyword {token} as a function name.");
                 }
@@ -344,10 +344,6 @@ internal static class Parser
                     throw new Exception($"Expected label for memory after {expectedBracket}, but got nothing.");
                 }
                 var label = tokens.Dequeue();
-                if (Tokens.IsReserved(label.Value))
-                {
-                    throw new Exception($"Cannot use reserved keyword {label} as a memory label.");
-                }
                 var uniqueLabel = context.AddMemory(label);
                 meta.AddMemory(uniqueLabel, size);
             }
@@ -370,7 +366,7 @@ internal static class Parser
                     {
                         break;
                     }
-                    if (Tokens.IsReserved(pinToken.Value))
+                    if (context.IsReserved(pinToken.Value))
                     {
                         throw new Exception($"Cannot use reserved keyword {pinToken} as a pinned stack item.");
                     }
@@ -478,7 +474,7 @@ internal static class Parser
             throw new Exception($"Expected loop condition, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
         }
         var iteratorLabel = tokens.Dequeue();
-        if (Tokens.IsReserved(iteratorLabel.Value))
+        if (context.IsReserved(iteratorLabel.Value))
         {
             throw new Exception($"Cannot use reserved keyword {iteratorLabel} as a loop iterator.");
         }
@@ -656,14 +652,14 @@ internal static class Parser
         return MetaEvaluate(words, meta, new(), null, out _, out _);
     }
 
-    private static Constant ParseConstant(Token token, Queue<Token> tokens)
+    private static Constant ParseConstant(Token token, Queue<Token> tokens, Context context)
     {
         if (tokens.Count < 2)
         {
             throw new Exception($"Expected at least two tokens after `aka`, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
         }
         var nameToken = tokens.Dequeue();
-        if (Tokens.IsReserved(nameToken.Value))
+        if (context.IsReserved(nameToken.Value))
         {
             throw new Exception($"Expected identifier, but got an existing keyword {nameToken.Value}.");
         }
@@ -686,12 +682,12 @@ internal static class Parser
         }
     }
 
-    private static Structure ParseStructure(Token token, Queue<Token> tokens)
+    private static Structure ParseStructure(Token token, Queue<Token> tokens, Context context)
     {
         var structName = tokens.Dequeue();
         var fields = new Dictionary<string, StructureField>();
 
-        if (Tokens.IsReserved(structName.Value))
+        if (context.IsReserved(structName.Value))
         {
             throw new Exception($"Expected identifier, but got an existing keyword {structName}.");
         }
@@ -709,10 +705,6 @@ internal static class Parser
             if (member.Value is ";")
             {
                 break;
-            }
-            if (Tokens.IsReserved(member.Value))
-            {
-                throw new Exception($"Expected identifier, but got an existing keyword {member}.");
             }
 
             var sizeToken = tokens.Dequeue();
