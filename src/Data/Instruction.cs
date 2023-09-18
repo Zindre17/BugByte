@@ -49,7 +49,7 @@ internal static class Instructions
         {
             if (stack.Count is 0)
             {
-                throw new Exception("Stack is empty.");
+                throw new Exception($"Stack is empty ({token})");
             }
             stack.Pop();
         });

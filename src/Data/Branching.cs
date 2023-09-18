@@ -49,7 +49,7 @@ internal record Branching(Token Token, List<IProgramPiece>? YesBranch, List<IPro
             var (diff, msg) = currentStack.Diff(cloneStack);
             if (diff is not TypeStackDiff.Equal)
             {
-                throw new Exception($"Single branched `?` ({NoBranch.First().Token}) cannot alter stack. Size {currentStack.Count} vs {cloneStack.Count}. Diff: {msg}");
+                throw new Exception($"Single branched `?` ({NoBranch.First().Token}) cannot alter stack. Size {currentStack.Count} vs {cloneStack.Count}.\nDiff:\n{msg}");
             }
         }
         else if (NoBranch is null)

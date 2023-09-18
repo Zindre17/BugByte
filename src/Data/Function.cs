@@ -19,6 +19,7 @@ internal record Function(Token Token, Contract Contract, List<IProgramPiece> Bod
         }
         if (stack.Count != Contract.Out.Length)
         {
+            Console.WriteLine($"Did not produce expected amount of values: {stack.Count} != {Contract.Out.Length}\n{stack}");
             return false;
         }
         var outs = new Stack<DataType>(Contract.Out);
