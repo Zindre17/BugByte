@@ -17,7 +17,6 @@ stackcountmem store
 stack-count()int: stackcountmem load;
 
 using line-count:
-    "stack count: " prints stack-count print
     0 while line-nr line-count < :
         lines line-nr get-line
         using size line-start:
@@ -44,9 +43,6 @@ using line-count:
                     line-nr 1 -
                 ;
                 drop
-                
-                show-tops
-                
                 "\n" prints
                 line-nr line-count + 2 +
             ;
@@ -76,10 +72,7 @@ execute-command(int int int):
         0
         while i count <:
             source pop-crate 
-            dup "moving " prints printc " to " prints 
-            target
-            dup print
-            push-crate
+            target push-crate
             i bump
         ;
         drop
@@ -88,7 +81,6 @@ execute-command(int int int):
 
 parse-command(int)int int int: 
     lines swap get-line
-    over over prints "\n" prints
     words
     drop 
     using words-array:
