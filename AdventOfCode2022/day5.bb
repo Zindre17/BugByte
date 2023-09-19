@@ -60,11 +60,68 @@ using line-count:
     drop
     show-tops
     "\n" prints
+    # part 2
+    0 while line-nr line-count < :
+        lines line-nr get-line
+        using size line-start:
+            line-start is-crate-number-line ?
+            no:
+                line-nr 1 +        
+            ;
+            yes: 
+                line-nr 1 -
+                while line-nr 0 >= :
+                    0
+                    while stack-nr stack-count < :
+                        lines line-nr get-line
+                        stack-nr get-crate-slot
+                        load-byte dup 0" " load-byte = ?
+                        no:
+                            dup stack-nr push-crate
+                        ;
+                        drop 
+                        drop
+                        stack-nr bump
+                    ;
+                    drop
+                    line-nr 1 -
+                ;
+                drop
+                "\n" prints
+                line-nr line-count + 2 +
+            ;
+        ;
+    ;
+    line-count -
+    while line-nr line-count < :
+        # lines line-nr get-line prints "\n" prints
+        lines line-nr get-line drop 0 = ?
+        no: 
+            line-nr parse-command execute-command-bulk
+        ;
+        line-nr bump
+    ;
+    drop
+    show-tops
+    "\n" prints
 ;
 
 pop-stack(int)int:
     dup dup get-stack-size 1 - swap set-stack-size
     dup get-stack-size get-stack-item
+;
+
+execute-command-bulk(int int int):
+    using count source target:
+        0 while i count < :
+            source pop-crate
+            target target get-stack-size count + 1 - i - get-stack-index
+            store
+            i bump
+        ;
+        drop 
+        target get-stack-size count + target set-stack-size
+    ;
 ;
 
 execute-command(int int int):
