@@ -9,33 +9,32 @@ internal static class Lexer
         var lineNr = 1;
         foreach (var line in lines)
         {
-            var remainingLine = line.TrimStart();
-            var currentColumn = line.Length - remainingLine.Length + 1; // index starts at 1
-            while (remainingLine.Length > 0)
+            var lineSegment = LineSegment.From(line);
+            while (lineSegment is not EmptyLineSegment)
             {
-                if (remainingLine.StartsWith(LineComment))
+                if (lineSegment.Value.StartsWith(LineComment))
                 {
                     break;
                 }
 
                 string word;
 
-                if (remainingLine.StartsWith(StringLiteral) || remainingLine.StartsWith(NullTerminatedStringLiteral))
+                if (lineSegment.Value.StartsWith(StringLiteral) || lineSegment.Value.StartsWith(NullTerminatedStringLiteral))
                 {
-                    var endQuoteIndex = remainingLine.IndexOf(StringLiteral, remainingLine.StartsWith(StringLiteral) ? StringLiteral.Length : NullTerminatedStringLiteral.Length);
+                    var endQuoteIndex = lineSegment.Value.IndexOf(StringLiteral, lineSegment.Value.StartsWith(StringLiteral) ? StringLiteral.Length : NullTerminatedStringLiteral.Length);
                     if (endQuoteIndex is -1)
                     {
-                        throw new Exception($"Missing end quote for string literal `{remainingLine}` @ {filename}:{lineNr}:{currentColumn}");
+                        throw new Exception($"Missing end quote for string literal `{lineSegment}` @ {filename}:{lineNr}:{lineSegment.Offset}");
                     }
-                    word = remainingLine[..(endQuoteIndex + 1)];
+                    word = lineSegment.Value[..(endQuoteIndex + 1)];
                 }
-                else if (SpecialSeparatorSymbols.Contains(remainingLine[0]))
+                else if (SpecialSeparatorSymbols.Contains(lineSegment.Value[0]))
                 {
-                    word = remainingLine[0].ToString();
+                    word = lineSegment.Value[0].ToString();
                 }
                 else
                 {
-                    var split = remainingLine.Split(' ', 2);
+                    var split = lineSegment.Value.Split(' ', 2);
                     word = split[0];
                     for (var index = 0; index < word.Length; index++)
                     {
@@ -47,17 +46,9 @@ internal static class Lexer
                     }
                 }
 
-                words.Enqueue(new Token(filename, word, lineNr, currentColumn));
+                words.Enqueue(new Token(filename, word, lineNr, lineSegment.Offset));
 
-                if (remainingLine.Length > word.Length)
-                {
-                    remainingLine = remainingLine[word.Length..].TrimStart();
-                    currentColumn = line.Length - remainingLine.Length + 1;
-                }
-                else
-                {
-                    remainingLine = "";
-                }
+                lineSegment = lineSegment.Without(word);
             }
             lineNr++;
         }
