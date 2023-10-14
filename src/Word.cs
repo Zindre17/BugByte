@@ -58,6 +58,8 @@ public class Word : IWord
     public string Value { get; }
 
     public Word(string value) => Value = value;
+
+    public override string ToString() => Value;
 }
 
 public class SpecialCharacter : IWord
@@ -65,6 +67,8 @@ public class SpecialCharacter : IWord
     public string Value { get; }
 
     public SpecialCharacter(string value) => Value = value[0].ToString();
+
+    public override string ToString() => Value;
 }
 
 public class StringLiteralWord : WrappedWord
@@ -102,6 +106,8 @@ public abstract class WrappedWord : IWord
         }
         Value = value[..(indexOfEnd + end.Length)];
     }
+
+    public override string ToString() => Value;
 }
 
 public class LineComment : IWord

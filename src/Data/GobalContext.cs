@@ -23,7 +23,7 @@ internal record GlobalContext(
 
     public PinnedStackItem PinStackItem(Token token)
     {
-        if (PinnedStackItems.TryGetValue(token.Value, out var stack))
+        if (PinnedStackItems.TryGetValue(token.Word.Value, out var stack))
         {
             stack.Push(new(token, pinnedStackItemsCount));
         }
@@ -31,7 +31,7 @@ internal record GlobalContext(
         {
             stack = new Stack<PinnedStackItem>();
             stack.Push(new(token, pinnedStackItemsCount));
-            PinnedStackItems.Add(token.Value, stack);
+            PinnedStackItems.Add(token.Word.Value, stack);
         }
 
         pinnedStackItemsCount++;
@@ -60,7 +60,7 @@ internal record GlobalContext(
 
     public void AddInclusion(Token inclusion)
     {
-        if (!Inclusions.TryAdd(inclusion.Value, inclusion))
+        if (!Inclusions.TryAdd(inclusion.Word.Value, inclusion))
         {
             throw new Exception($"Duplicate inclusion {inclusion}.");
         }

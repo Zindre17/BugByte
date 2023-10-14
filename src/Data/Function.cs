@@ -11,7 +11,7 @@ internal record Function(Token Token, Contract Contract, List<IProgramPiece> Bod
         var stack = new TypeStack();
         foreach (var @in in Contract.In)
         {
-            stack.Push((@in, new Token("", "", 0, 0)));
+            stack.Push((@in, new Token("", new Word(""), 0, 0)));
         }
         foreach (var piece in Body)
         {

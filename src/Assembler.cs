@@ -85,7 +85,7 @@ public class Assembler
         }
         foreach (var literal in meta.NullTerminatedStringLiterals.Values)
         {
-            Assembly.Add(ToAssemblyDataString($"ns{literal.Index}", literal.Value));
+            Assembly.Add(ToAssemblyDataString($"ns{literal.Index}", literal.Value + "\0"));
         }
 
         Assembly.Add("segment readable writeable");

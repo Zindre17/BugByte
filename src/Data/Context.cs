@@ -37,9 +37,9 @@ internal record Context
 
     public void AddFunction(FunctionMeta function)
     {
-        if (!Functions.TryAdd(function.Name.Value, function))
+        if (!Functions.TryAdd(function.Name.Word.Value, function))
         {
-            throw new Exception($"Duplicate function {function.Name} and {Functions[function.Name.Value].Name}.");
+            throw new Exception($"Duplicate function {function.Name} and {Functions[function.Name.Word.Value].Name}.");
         }
     }
 
@@ -82,29 +82,29 @@ internal record Context
 
     internal string AddMemory(Token label)
     {
-        if (Memory.TryGetValue(label.Value, out var token))
+        if (Memory.TryGetValue(label.Word.Value, out var token))
         {
             if (token != label)
             {
                 throw new Exception($"Duplicate memory label {label} and {token}.");
             }
-            return GenerateMemoryLabel(label.Value);
+            return GenerateMemoryLabel(label.Word.Value);
         }
 
-        if (IsReserved(label.Value))
+        if (IsReserved(label.Word.Value))
         {
             throw new Exception($"Cannot use reserved keyword {label} as a memory label.");
         }
 
-        Memory.TryAdd(label.Value, label);
-        return GenerateMemoryLabel(label.Value);
+        Memory.TryAdd(label.Word.Value, label);
+        return GenerateMemoryLabel(label.Word.Value);
     }
 
     internal bool TryGetMemory(Token label, out string memory)
     {
-        if (Memory.ContainsKey(label.Value))
+        if (Memory.ContainsKey(label.Word.Value))
         {
-            memory = GenerateMemoryLabel(label.Value);
+            memory = GenerateMemoryLabel(label.Word.Value);
             return true;
         }
         else if (Parent is not null)

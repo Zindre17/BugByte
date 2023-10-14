@@ -13,12 +13,11 @@ internal static class Lexer
             while (lineSegment is not EmptyLineSegment)
             {
                 var nextWord = lineSegment.FindNextWord();
-
                 if (nextWord is LineComment)
                 {
                     break;
                 }
-                words.Enqueue(new(filename, nextWord.Value, lineNr, lineSegment.Offset));
+                words.Enqueue(new(filename, nextWord, lineNr, lineSegment.Offset));
                 lineSegment = lineSegment.Without(nextWord.Value);
             }
             lineNr++;
@@ -27,9 +26,9 @@ internal static class Lexer
     }
 }
 
-internal record Token(string Filename, string Value, int Line, int Column)
+internal record Token(string Filename, IWord Word, int Line, int Column)
 {
-    public override string ToString() => $"`{Value}` @ {Filename}:{Line}:{Column}";
+    public override string ToString() => $"`{Word}` @ {Filename}:{Line}:{Column}";
 };
 
 public static class Tokens
