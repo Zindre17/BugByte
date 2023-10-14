@@ -11,11 +11,7 @@ public class LineSegment : ILineSegment
     public string Value { get; }
     public int Offset { get; }
 
-    private LineSegment(string value, int offset)
-    {
-        Value = value;
-        Offset = offset;
-    }
+    private LineSegment(string value, int offset) => (Value, Offset) = (value, offset);
 
     public static ILineSegment From(string value, int atOffset = 1)
     {

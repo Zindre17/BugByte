@@ -12,53 +12,19 @@ internal static class Lexer
             var lineSegment = LineSegment.From(line);
             while (lineSegment is not EmptyLineSegment)
             {
-                if (lineSegment.Value.StartsWith(LineComment))
+                var nextWord = lineSegment.FindNextWord();
+
+                if (nextWord is LineComment)
                 {
                     break;
                 }
-
-                string word;
-
-                if (lineSegment.Value.StartsWith(StringLiteral) || lineSegment.Value.StartsWith(NullTerminatedStringLiteral))
-                {
-                    var endQuoteIndex = lineSegment.Value.IndexOf(StringLiteral, lineSegment.Value.StartsWith(StringLiteral) ? StringLiteral.Length : NullTerminatedStringLiteral.Length);
-                    if (endQuoteIndex is -1)
-                    {
-                        throw new Exception($"Missing end quote for string literal `{lineSegment}` @ {filename}:{lineNr}:{lineSegment.Offset}");
-                    }
-                    word = lineSegment.Value[..(endQuoteIndex + 1)];
-                }
-                else if (SpecialSeparatorSymbols.Contains(lineSegment.Value[0]))
-                {
-                    word = lineSegment.Value[0].ToString();
-                }
-                else
-                {
-                    var split = lineSegment.Value.Split(' ', 2);
-                    word = split[0];
-                    for (var index = 0; index < word.Length; index++)
-                    {
-                        if (SpecialSeparatorSymbols.Contains(word[index]))
-                        {
-                            word = word[..index];
-                            break;
-                        }
-                    }
-                }
-
-                words.Enqueue(new Token(filename, word, lineNr, lineSegment.Offset));
-
-                lineSegment = lineSegment.Without(word);
+                words.Enqueue(new(filename, nextWord.Value, lineNr, lineSegment.Offset));
+                lineSegment = lineSegment.Without(nextWord.Value);
             }
             lineNr++;
         }
         return words;
     }
-
-    internal const string LineComment = "#";
-    internal const string StringLiteral = "\"";
-    internal const string NullTerminatedStringLiteral = "0\"";
-    internal static char[] SpecialSeparatorSymbols = new char[] { ':', ';', '?', '[', ']', '(', ')' };
 }
 
 internal record Token(string Filename, string Value, int Line, int Column)
