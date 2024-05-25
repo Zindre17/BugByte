@@ -29,7 +29,7 @@ internal record Loop(Token Token, PinnedStackItem Iterator, List<IProgramPiece> 
         assembly.AddRange(Instructions.PushPinnedStackItem(Iterator).Assemble());
         assembly.AddRange(Instructions.UnpinStackItem(Iterator).Assemble());
 
-        return assembly.ToArray();
+        return [.. assembly];
     }
 
     public void TypeCheck(TypeStack currentStack)

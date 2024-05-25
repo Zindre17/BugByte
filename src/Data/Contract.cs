@@ -2,10 +2,10 @@ namespace BugByte;
 
 internal record Contract(DataType[] In, DataType[] Out)
 {
-    public Contract() : this(Array.Empty<DataType>(), Array.Empty<DataType>()) { }
+    public Contract() : this([], []) { }
 
-    public static Contract Producer(params DataType[] outTypes) => new(Array.Empty<DataType>(), outTypes);
-    public static Contract Consumer(params DataType[] inTypes) => new(inTypes, Array.Empty<DataType>());
+    public static Contract Producer(params DataType[] outTypes) => new([], outTypes);
+    public static Contract Consumer(params DataType[] inTypes) => new(inTypes, []);
 
     public void TypeCheck(Token token, TypeStack stack)
     {
@@ -36,12 +36,12 @@ internal record Contract(DataType[] In, DataType[] Out)
         var _out = Out.ToList();
         if (next.IsEmpty)
         {
-            return new Contract(_in.ToArray(), _out.ToArray());
+            return new Contract([.. _in], [.. _out]);
         }
         else if (next.In.Length is 0)
         {
             _out.AddRange(next.Out);
-            return new Contract(_in.ToArray(), _out.ToArray());
+            return new Contract([.. _in], [.. _out]);
         }
         else
         {
@@ -64,7 +64,7 @@ internal record Contract(DataType[] In, DataType[] Out)
                 }
             }
 
-            return new Contract(_in.ToArray(), prevOuts.Reverse().Concat(next.Out).ToArray());
+            return new Contract([.. _in], [.. prevOuts.Reverse(), .. next.Out]);
         }
     }
 }

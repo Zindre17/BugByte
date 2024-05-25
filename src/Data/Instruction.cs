@@ -28,7 +28,7 @@ internal static class Instructions
 {
     internal static Instruction Cast(Token token, DataType pointer)
     {
-        return new(token, Array.Empty<string>(), stack =>
+        return new(token, [], stack =>
         {
             if (stack.Count is 0)
             {
@@ -301,7 +301,7 @@ internal static class Instructions
     {
         var offsetInstruction = Literal.Number(token, offset);
         var addInstruction = Operations.Add(token);
-        return new(token, offsetInstruction.Assemble().Concat(addInstruction.Assemble()).ToArray(), stack =>
+        return new(token, [.. offsetInstruction.Assemble(), .. addInstruction.Assemble()], stack =>
         {
             if (stack.Count is 0)
             {
@@ -373,7 +373,7 @@ internal static class Instructions
         assembly.Add("  syscall");
         assembly.Add("  push rax");
 
-        return new(token, assembly.ToArray(), stack =>
+        return new(token, [.. assembly], stack =>
         {
             if (stack.Count < version + 1)
             {
@@ -474,7 +474,7 @@ internal static class Instructions
 
     public static class Operations
     {
-        private static Contract CommonOperatorContract => new(new[] { DataType.Number, DataType.Number }, new[] { DataType.Number });
+        private static Contract CommonOperatorContract => new([DataType.Number, DataType.Number], [DataType.Number]);
 
         public static Instruction Add(Token token)
         {
@@ -746,7 +746,7 @@ internal static class Instructions
                 $"  push rax",
                 $".string_equal_end:",
             };
-            return new(token, assembly, Contract.Consumer(DataType.Number, DataType.Pointer, DataType.Number, DataType.Pointer) with { Out = new[] { DataType.Number } });
+            return new(token, assembly, Contract.Consumer(DataType.Number, DataType.Pointer, DataType.Number, DataType.Pointer) with { Out = [DataType.Number] });
         }
 
         internal static IProgramPiece Xor(Token token)

@@ -4,8 +4,8 @@ public class Assembler
 {
     public Assembler()
     {
-        Assembly = new()
-        {
+        Assembly =
+        [
             "format ELF64 executable 3",
             "segment readable executable",
             "entry start",
@@ -49,7 +49,7 @@ public class Assembler
             ";-- setup temp stack pointers --",
             "  mov r15, temp_stack; top of stack",
             "  mov r14, temp_stack; bottom of stack",
-        };
+        ];
     }
 
     public List<string> Assembly { get; init; }

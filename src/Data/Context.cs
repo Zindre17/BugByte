@@ -8,7 +8,7 @@ internal record Context
         Constants = new(parent.Constants);
         Structures = new(parent.Structures);
         Name = "";
-        Memory = new();
+        Memory = [];
         Parent = parent;
     }
 
@@ -16,10 +16,10 @@ internal record Context
 
     public string Name { get; set; } = "";
 
-    public Dictionary<string, Token> Memory { get; } = new();
-    private Dictionary<string, FunctionMeta> Functions { get; } = new();
-    private Dictionary<string, Constant> Constants { get; } = new();
-    private Dictionary<string, Structure> Structures { get; } = new();
+    public Dictionary<string, Token> Memory { get; } = [];
+    private Dictionary<string, FunctionMeta> Functions { get; } = [];
+    private Dictionary<string, Constant> Constants { get; } = [];
+    private Dictionary<string, Structure> Structures { get; } = [];
 
     public bool IsReserved(string name)
     {

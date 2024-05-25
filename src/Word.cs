@@ -36,8 +36,8 @@ public static class LineExtensions
 
     internal const string LineCommentSymbol = "#";
 
-    internal static char[] SpecialSeparatorSymbols = new char[] { ':', ';', '?', '[', ']', '(', ')' };
-    internal static char[] WordSeparators = new char[] { ' ' }.Concat(SpecialSeparatorSymbols).ToArray();
+    internal static char[] SpecialSeparatorSymbols = [':', ';', '?', '[', ']', '(', ')'];
+    internal static char[] WordSeparators = [' ', .. SpecialSeparatorSymbols];
 }
 
 static class StringLiteralDefinition

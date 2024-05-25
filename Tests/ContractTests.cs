@@ -6,8 +6,8 @@ public class ContractTests
     [TestMethod]
     public void JoinInto_NoIns()
     {
-        var a = new Contract(Array.Empty<DataType>(), new DataType[] { DataType.Number });
-        var b = new Contract(Array.Empty<DataType>(), new DataType[] { DataType.Pointer });
+        var a = new Contract([], [DataType.Number]);
+        var b = new Contract([], [DataType.Pointer]);
 
         var r = a.JoinInto(b);
 
@@ -20,7 +20,7 @@ public class ContractTests
     [TestMethod]
     public void JoinInto_Empty()
     {
-        var a = new Contract(new DataType[] { DataType.Number }, new DataType[] { DataType.Number });
+        var a = new Contract([DataType.Number], [DataType.Number]);
         var b = new Contract();
 
         var r = a.JoinInto(b);
@@ -34,8 +34,8 @@ public class ContractTests
     [TestMethod]
     public void JoinInto_ExactInOutMatch()
     {
-        var a = new Contract(new DataType[] { DataType.Number, DataType.Pointer }, new DataType[] { DataType.Number });
-        var b = new Contract(new DataType[] { DataType.Number }, new DataType[] { DataType.Pointer });
+        var a = new Contract([DataType.Number, DataType.Pointer], [DataType.Number]);
+        var b = new Contract([DataType.Number], [DataType.Pointer]);
 
         var r = a.JoinInto(b);
 
@@ -49,8 +49,8 @@ public class ContractTests
     [TestMethod]
     public void JoinInto_InsufficientIn()
     {
-        var a = new Contract(new DataType[] { DataType.Number, DataType.Pointer }, new DataType[] { DataType.Number });
-        var b = new Contract(new DataType[] { DataType.String, DataType.Number }, new DataType[] { DataType.Pointer });
+        var a = new Contract([DataType.Number, DataType.Pointer], [DataType.Number]);
+        var b = new Contract([DataType.String, DataType.Number], [DataType.Pointer]);
 
         var r = a.JoinInto(b);
 
@@ -65,8 +65,8 @@ public class ContractTests
     [TestMethod]
     public void JoinInto_ExcessOuts()
     {
-        var a = new Contract(new DataType[] { DataType.Pointer }, new DataType[] { DataType.Pointer, DataType.String, DataType.Number });
-        var b = new Contract(new DataType[] { DataType.Number }, new DataType[] { DataType.ZeroTerminatedString });
+        var a = new Contract([DataType.Pointer], [DataType.Pointer, DataType.String, DataType.Number]);
+        var b = new Contract([DataType.Number], [DataType.ZeroTerminatedString]);
 
         var r = a.JoinInto(b);
 
@@ -81,8 +81,8 @@ public class ContractTests
     [TestMethod]
     public void JoinInto_Incompatible()
     {
-        var a = new Contract(Array.Empty<DataType>(), new DataType[] { DataType.Pointer });
-        var b = new Contract(new DataType[] { DataType.Number }, Array.Empty<DataType>());
+        var a = new Contract([], [DataType.Pointer]);
+        var b = new Contract([DataType.Number], []);
 
         Assert.ThrowsException<Exception>(() => a.JoinInto(b));
     }

@@ -8,16 +8,11 @@ internal record GlobalContext(
     Dictionary<string, StringLiteral> NullTerminatedStringLiterals
     )
 {
-    public GlobalContext() : this(
-        new(),
-        new(),
-        new()
-        )
-    { }
+    public GlobalContext() : this([], [], []) { }
 
-    public Dictionary<string, Stack<PinnedStackItem>> PinnedStackItems { get; } = new();
+    public Dictionary<string, Stack<PinnedStackItem>> PinnedStackItems { get; } = [];
 
-    public Dictionary<string, int> Memory { get; } = new();
+    public Dictionary<string, int> Memory { get; } = [];
 
     private int pinnedStackItemsCount = 0;
 

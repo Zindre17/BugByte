@@ -29,7 +29,7 @@ internal record Branching(Token Token, List<IProgramPiece>? YesBranch, List<IPro
         }
         assembly.Add($"{endLabel}:");
 
-        return assembly.ToArray();
+        return [.. assembly];
     }
 
     public void TypeCheck(TypeStack currentStack)
