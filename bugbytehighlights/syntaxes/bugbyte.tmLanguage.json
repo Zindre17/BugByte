@@ -87,7 +87,7 @@
 				},
 				{
 					"name": "storage.modifier.bugbyte",
-					"match": "\\b(ptr|int)\\b"
+					"match": "\\b(ptr|int|str|0str|bool)\\b"
 				},
 				{
 					"name": "constant.language.bugbyte",
