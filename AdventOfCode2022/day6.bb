@@ -13,12 +13,12 @@ aka shortSize 4
 # drop drop
 using streamSize streamStart:
     # init window
-    readNext 0 windowIndex store
-    readNext 1 windowIndex store
-    readNext 2 windowIndex store
-    readNext 3 windowIndex store
+    readNext 0 window bufferPosition store
+    readNext 1 window bufferPosition store
+    readNext 2 window bufferPosition store
+    readNext 3 window bufferPosition store
 
-    window while it hasDuplicates: 
+    window while it shortSize hasDuplicates: 
         shiftWindowLeft
         readNext
         append
@@ -33,22 +33,22 @@ using streamSize streamStart:
     # Part 2
     0 cursor store
     
-    readNext 0  longWindowIndex store
-    readNext 1  longWindowIndex store
-    readNext 2  longWindowIndex store
-    readNext 3  longWindowIndex store
-    readNext 4  longWindowIndex store
-    readNext 5  longWindowIndex store
-    readNext 6  longWindowIndex store
-    readNext 7  longWindowIndex store
-    readNext 8  longWindowIndex store
-    readNext 9  longWindowIndex store
-    readNext 10 longWindowIndex store
-    readNext 11 longWindowIndex store
-    readNext 12 longWindowIndex store
-    readNext 13 longWindowIndex store
+    readNext 0  longWindow bufferPosition store
+    readNext 1  longWindow bufferPosition store
+    readNext 2  longWindow bufferPosition store
+    readNext 3  longWindow bufferPosition store
+    readNext 4  longWindow bufferPosition store
+    readNext 5  longWindow bufferPosition store
+    readNext 6  longWindow bufferPosition store
+    readNext 7  longWindow bufferPosition store
+    readNext 8  longWindow bufferPosition store
+    readNext 9  longWindow bufferPosition store
+    readNext 10 longWindow bufferPosition store
+    readNext 11 longWindow bufferPosition store
+    readNext 12 longWindow bufferPosition store
+    readNext 13 longWindow bufferPosition store
     
-    longWindow while it hasLongDuplicates: 
+    longWindow while it longSize hasDuplicates: 
         shiftLongWindowLeft
         readNext
         appendLong
@@ -65,8 +65,9 @@ using streamSize streamStart:
 
 bumpCursor(): cursor load 1 + cursor store ;
 
-append(int): 3 windowIndex store ;
-appendLong(int): 13 longWindowIndex store ;
+insert(int int ptr): swap 8 * + store ;
+append(int): shortSize 1 - window insert ;
+appendLong(int): longSize 1 - longWindow insert ;
 
 shiftWindowLeft(): window shortSize shiftLeft ;
 
@@ -89,41 +90,16 @@ shiftItemLeft(ptr int):
     swap 8 - store
 ;
 
-windowIndex(int) ptr: 8 * window + ;
+bufferPosition(int ptr) ptr: swap 8 * + ;
 
-windowItem(int) int: windowIndex load ;
-
-longWindowIndex(int) ptr: 8 * longWindow + ;
-
-hasDuplicates(ptr) bool:
-    using windowStart:
-        0 1 compare
-        0 2 compare +
-        0 3 compare +
-        
-        1 2 compare +
-        1 3 compare +
-        
-        2 3 compare +
-        
-        0 >
-        
-        compare(int int) bool: 
-            8 * windowStart + load-byte
-            swap 
-            8 * windowStart + load-byte
-            =
-        ;
-    ;
-;
-
-hasLongDuplicates(ptr) bool: 
+hasDuplicates(ptr int) bool: 
     alloc[8] sum
     0 sum store
     
-    using windowStart:
-        0 while i 13 <: 
-            i 1 + while j 13 <=:
+    1 -
+    using windowStart lastIndex:
+        0 while i lastIndex <: 
+            i 1 + while j lastIndex <=:
                 i j compare
                 sum load + sum store
                 
