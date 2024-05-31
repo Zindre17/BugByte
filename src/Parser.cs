@@ -60,21 +60,34 @@ internal static class Parser
                     throw new Exception($"Cannot use reserved keyword {token} as a function name.");
                 }
 
-                var arguments = ParseDataTypes(tokenQueue, ")");
+                var arguments = ParseParameters(innerContext, tokenQueue, ")");
+                List<Token> inputPins = [];
+                if (arguments.All(Parameter.IsNamed))
+                {
+                    inputPins.AddRange(arguments.Select(Parameter.GetNameToken));
+                }
+                else if (arguments.Any(Parameter.IsNamed))
+                {
+                    throw new Exception($"Expected either all anonymous parameters or all named parameters for function input, but got mix in {token}");
+                }
                 var argumentsEndToken = tokenQueue.Dequeue();
                 if (argumentsEndToken.Word.Value is not ")")
                 {
                     throw new Exception($"Expected `)` after function arguments, but got {argumentsEndToken}.");
                 }
 
-                var output = ParseDataTypes(tokenQueue, ":");
+                var output = ParseParameters(innerContext, tokenQueue, ":");
+                if (output.Any(Parameter.IsNamed))
+                {
+                    throw new Exception($"Expected anonymous parameters for function output, but got named parameters.");
+                }
                 var outputEndToken = tokenQueue.Dequeue();
                 if (outputEndToken.Word.Value is not ":")
                 {
                     throw new Exception($"Expected `:` after function output, but got {outputEndToken}.");
                 }
 
-                var contract = new Contract(arguments.ToArray(), output.ToArray());
+                var contract = new Contract([.. arguments.Select(a => a.DataType)], [.. output.Select(o => o.DataType)]);
                 var functionContext = MetaEvaluate(tokenQueue, meta, innerContext, ";", out var innerRemaining, out var remaining);
                 functionContext.Name = functionName;
                 tokenQueue = (Queue<Token>)remaining;
@@ -83,7 +96,7 @@ internal static class Parser
                 {
                     throw new Exception($"Expected `;` after function, but got {endToken}.");
                 }
-                var functionMeta = new FunctionMeta(token, innerRemaining.ToList(), contract, functionContext);
+                var functionMeta = new FunctionMeta(token, innerRemaining.ToList(), contract, inputPins, functionContext);
                 innerContext.AddFunction(functionMeta);
             }
             else
@@ -142,8 +155,20 @@ internal static class Parser
             }
             else if (context.TryGetFunction(token.Word.Value, out var func))
             {
-                var funcProgram = ParseProgram(new Queue<Token>(func.Body), meta, func.Context, ";");
-                var parsedFunc = new Function(token, func.Contract, funcProgram);
+                List<IProgramPiece> funcProgram = [];
+                var pinnedInputItems = func.InputPins.Reverse<Token>().Select(meta.PinStackItem);
+
+                pinnedInputItems.ForEach(item => funcProgram.Add(Instructions.PinStackItem(item)));
+
+                funcProgram.AddRange(ParseProgram(new Queue<Token>(func.Body), meta, func.Context, ";"));
+
+                pinnedInputItems.ForEach(item =>
+                {
+                    meta.UnpinStackItem(item.Token.Word.Value);
+                    funcProgram.Add(Instructions.UnpinStackItem(item));
+                });
+
+                var parsedFunc = new Function(token, func.Contract, func.InputPins.Any(), funcProgram);
                 programPieces.Add(parsedFunc);
             }
             else if (meta.PinnedStackItems.TryGetValue(token.Word.Value, out var pinnedStackItems))
@@ -445,15 +470,15 @@ internal static class Parser
                     throw new Exception($"Expected type after {token}, but got nothing.");
                 }
                 var typeToken = tokens.Dequeue();
-                if (typeToken.Word.Value is not Tokens.DataType.Number and not Tokens.DataType.Pointer)
+                if (typeToken.Word.Value is not Tokens.DataTypes.Number and not Tokens.DataTypes.Pointer)
                 {
                     throw new Exception($"Expected type after {token}, but got {typeToken}.");
                 }
-                if (typeToken.Word.Value is Tokens.DataType.Number)
+                if (typeToken.Word.Value is Tokens.DataTypes.Number)
                 {
                     programPieces.Add(Instructions.Cast(token, DataType.Number));
                 }
-                else if (typeToken.Word.Value is Tokens.DataType.Pointer)
+                else if (typeToken.Word.Value is Tokens.DataTypes.Pointer)
                 {
                     programPieces.Add(Instructions.Cast(token, DataType.Pointer));
                 }
@@ -587,47 +612,42 @@ internal static class Parser
         return new(token, yesBranch, noBranch);
     }
 
-    private static List<DataType> ParseDataTypes(Queue<Token> tokens, string? terminationToken = null)
+    private static List<ParameterType> ParseParameters(Context context, Queue<Token> tokens, string? terminationToken = null)
     {
         if (tokens.Count is 0)
         {
             throw new Exception($"Expected contract, but got nothing.");
         }
 
-        var types = new List<DataType>();
+        var parameters = new List<ParameterType>();
 
         while (tokens.Count > 0 && tokens.Peek().Word.Value != terminationToken)
         {
             var token = tokens.Dequeue();
+            if (!Tokens.DataTypes.TryParseDataType(token.Word.Value, out var dataType))
+            {
+                throw new Exception($"Expected data type, but got {token}");
+            }
 
-            if (token.Word.Value is Tokens.DataType.Number)
+            if (tokens.Count is 0
+            || Tokens.DataTypes.TryParseDataType(tokens.Peek().Word.Value, out _)
+            || tokens.Peek().Word.Value == terminationToken)
             {
-                types.Add(DataType.Number);
+                parameters.Add(Parameter.Create(dataType));
+                continue;
             }
-            else if (token.Word.Value is Tokens.DataType.Pointer)
+
+            var nameToken = tokens.Dequeue();
+
+            if (context.IsReserved(nameToken.Word.Value))
             {
-                types.Add(DataType.Pointer);
+                throw new Exception($"Cannot use reserved keyword {nameToken} as a name for input.");
             }
-            else if (token.Word.Value is Tokens.DataType.Boolean)
-            {
-                types.Add(DataType.Number);
-            }
-            else if (token.Word.Value is Tokens.DataType.String)
-            {
-                types.Add(DataType.Number);
-                types.Add(DataType.Pointer);
-            }
-            else if (token.Word.Value is Tokens.DataType.NullTerminatedString)
-            {
-                types.Add(DataType.Pointer);
-            }
-            else
-            {
-                throw new Exception($"Unknown type {token}");
-            }
+
+            parameters.Add(Parameter.Create(nameToken, dataType));
         }
 
-        return types;
+        return parameters;
     }
 
     private static Context ParseInclude(Token token, Queue<Token> tokens, GlobalContext meta)
@@ -744,11 +764,29 @@ internal record Structure(Token Token, Dictionary<string, StructureField> Fields
 
 internal record StructureField(int Offset, int Size, string Name);
 
-enum DataType
+public enum DataType
 {
     Number,
     Pointer,
     String,
     ZeroTerminatedString,
     Unknown,
+}
+
+internal abstract record ParameterType(DataType DataType);
+internal record NamedParameter(Token Name, DataType DataType) : ParameterType(DataType);
+internal record AnonymousParameter(DataType DataType) : ParameterType(DataType);
+
+internal static class Parameter
+{
+    internal static ParameterType Create(Token nameToken, DataType dataType) => new NamedParameter(nameToken, dataType);
+    internal static ParameterType Create(DataType dataType) => new AnonymousParameter(dataType);
+
+    internal static bool IsNamed(this ParameterType parameter) => parameter is NamedParameter;
+
+    internal static Token GetNameToken(this ParameterType parameter) => parameter switch
+    {
+        NamedParameter namedParameter => namedParameter.Name,
+        _ => throw new Exception("No name for this parameter."),
+    };
 }

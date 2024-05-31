@@ -6,8 +6,8 @@ public class ContractTests
     [TestMethod]
     public void JoinInto_NoIns()
     {
-        var a = new Contract([], [DataType.Number]);
-        var b = new Contract([], [DataType.Pointer]);
+        var a = Contract.Producer(DataType.Number);
+        var b = Contract.Producer(DataType.Pointer);
 
         var r = a.JoinInto(b);
 
@@ -81,8 +81,8 @@ public class ContractTests
     [TestMethod]
     public void JoinInto_Incompatible()
     {
-        var a = new Contract([], [DataType.Pointer]);
-        var b = new Contract([DataType.Number], []);
+        var a = Contract.Producer(DataType.Pointer);
+        var b = Contract.Consumer(DataType.Number);
 
         Assert.ThrowsException<Exception>(() => a.JoinInto(b));
     }

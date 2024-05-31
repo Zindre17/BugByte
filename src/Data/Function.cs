@@ -1,8 +1,8 @@
 namespace BugByte;
 
-internal record FunctionMeta(Token Name, List<Token> Body, Contract Contract, Context Context);
+internal record FunctionMeta(Token Name, List<Token> Body, Contract Contract, List<Token> InputPins, Context Context);
 
-internal record Function(Token Token, Contract Contract, List<IProgramPiece> Body) : IProgramPiece
+internal record Function(Token Token, Contract Contract, bool AutoUsings, List<IProgramPiece> Body) : IProgramPiece
 {
     public string[] Assemble() => Body.SelectMany(i => i.Assemble()).ToArray();
 

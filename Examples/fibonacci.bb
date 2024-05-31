@@ -3,10 +3,16 @@ next(int int) int int:
    yes: drop 1;
    no: swap over +;
 ;
+
+alt-next(int prev int current) int int: 
+   prev current + 0 =?
+   yes: current 1;
+   no: current prev current +;
+;
  
 0 
 0 while current 100 <:
    current print
-   current next
+   current alt-next
 ;
 drop drop
