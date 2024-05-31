@@ -33,8 +33,9 @@ internal record GlobalContext(
         return stack.Peek();
     }
 
-    public void UnpinStackItem(string name)
+    public void UnpinStackItem(Token token)
     {
+        var name = token.Word.Value;
         if (PinnedStackItems.TryGetValue(name, out var stack))
         {
             if (stack.Count is 1)

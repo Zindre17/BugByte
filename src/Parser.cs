@@ -156,20 +156,17 @@ internal static class Parser
             else if (context.TryGetFunction(token.Word.Value, out var func))
             {
                 List<IProgramPiece> funcProgram = [];
-                var pinnedInputItems = func.InputPins.Reverse<Token>().Select(meta.PinStackItem);
+                var pinnedInputItems = func.InputPins.Reverse<Token>().Select(meta.PinStackItem).ToList();
 
                 pinnedInputItems.ForEach(item => funcProgram.Add(Instructions.PinStackItem(item)));
 
                 funcProgram.AddRange(ParseProgram(new Queue<Token>(func.Body), meta, func.Context, ";"));
 
-                pinnedInputItems.ForEach(item =>
-                {
-                    meta.UnpinStackItem(item.Token.Word.Value);
-                    funcProgram.Add(Instructions.UnpinStackItem(item));
-                });
 
-                var parsedFunc = new Function(token, func.Contract, func.InputPins.Any(), funcProgram);
+                var parsedFunc = new Function(token, func.Contract, func.InputPins.Count is not 0, funcProgram);
                 programPieces.Add(parsedFunc);
+
+                pinnedInputItems.ForEach(item => meta.UnpinStackItem(item.Token));
             }
             else if (meta.PinnedStackItems.TryGetValue(token.Word.Value, out var pinnedStackItems))
             {
@@ -416,7 +413,7 @@ internal static class Parser
                 programPieces.AddRange(program);
                 foreach (var pin in pins)
                 {
-                    meta.UnpinStackItem(pin.Token.Word.Value);
+                    meta.UnpinStackItem(pin.Token);
                 }
             }
             else if (context.TryGetMemory(token, out var memoryLabel))
@@ -523,7 +520,7 @@ internal static class Parser
             throw new Exception($"Expected `;` after loop body, but got {endBodyToken}");
         }
 
-        meta.UnpinStackItem(iteratorLabel.Word.Value);
+        meta.UnpinStackItem(iteratorLabel);
         return new(token, iterator, condition, body);
     }
 
