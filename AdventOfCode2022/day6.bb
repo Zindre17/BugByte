@@ -73,14 +73,12 @@ shiftWindowLeft(): window shortSize shiftLeft ;
 
 shiftLongWindowLeft(): longWindow longSize shiftLeft ;
 
-shiftLeft(ptr int): 
-    using buffer size:
-        1 while index size < :
-            buffer index shiftItemLeft
-            index 1 +
-        ;
-        drop
+shiftLeft(ptr buffer int size): 
+    1 while index size < :
+        buffer index shiftItemLeft
+        index 1 +
     ;
+    drop
 ;
 
 shiftItemLeft(ptr int):

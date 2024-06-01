@@ -13,84 +13,95 @@ alloc[8] sum2
 
 using line-count:
     0 while linenr line-count < :
-        linenr 16 *     lines + load 
-        linenr 16 * 8 + lines + load as ptr
-        using size pointer:
-            size 2 /
-            dup pointer + 
-            using half-size second-half:
-                half-size pointer get-items-bitwise 
-                half-size second-half get-items-bitwise 
-                &
-                get-priority-sum 
-                sum load + sum store
-            ;
+        linenr get-line
+        split-in-halfs
+
+        get-items-bitwise
+        
+        using first-half :
+            get-items-bitwise
+            first-half
+            &
+            get-priority-sum
+            add-to-sum
         ;
         linenr 1 +
-    ;
-    drop
+    ; drop
     
-    0 while index line-count < :
-        index 0 + 16 *     lines + load
-        index 0 + 16 * 8 + lines + load as ptr
-        index 1 + 16 *     lines + load
-        index 1 + 16 * 8 + lines + load as ptr
-        index 2 + 16 *     lines + load
-        index 2 + 16 * 8 + lines + load as ptr
-        using size1 ptr1 size2 ptr2 size3 ptr3:
-            size1 ptr1 get-items-bitwise 
-            size2 ptr2 get-items-bitwise 
-            size3 ptr3 get-items-bitwise 
-            &
-            &
-            get-priority-sum 
-            sum2 load + sum2 store
-        ;
-        index 3 +
-    ;
-    drop
+    0 while linenr line-count < :
+        linenr 0 + get-line get-items-bitwise
+        linenr 1 + get-line get-items-bitwise
+        &
+        linenr 2 + get-line get-items-bitwise
+        &
+        
+        get-priority-sum 
+        add-to-sum2
+        
+        linenr 3 +
+    ; drop
 ;
 
 "part1: " prints sum load print
 "part2: " prints sum2 load print
 
+add-to-sum(int): sum load + sum store ;
+add-to-sum2(int): sum2 load + sum2 store ;
+
 # size ptr -> number
-get-items-bitwise(int ptr) int:
+get-items-bitwise(int size ptr pointer) int:
     alloc[8] items
     0 items store
-    using size pointer:
-        0 while i size <:
-            i pointer + load-byte
-            dup 97 < ? yes: 
-                # Uppercase (27 - 52)
-                64 - 26 +
-            ;
-            no:
-                # Lowercase (1 - 26)
-                96 - 
-            ;
-            1 swap << 
-            items load |
-            items store
-            i 1 +
+    
+    0 while i size <:
+        i pointer + load-byte
+        dup is-upper-case ? yes: 
+            # Uppercase priority A - Z (27 - 52)
+            64 - 26 +
         ;
-        drop
-    ;
+        no:
+            # Lowercase priority a - z (1 - 26)
+            96 - 
+        ;
+        
+        1 swap << 
+        items load 
+        |
+        items store
+        
+        i 1 +
+    ; drop
+    
     items load
 ;
 
+is-upper-case(int) bool: 97 < ;
+
 # number -> number
-get-priority-sum(int) int:
+get-priority-sum(int items) int:
     alloc[8] score   
     0 score store
-    using items:
-        0 while i 64 < :
-            1 i << 
-            items &
-            0 > ? yes: i score load + score store;
-            i 1 +
-        ;
-        drop
-    ;
+    
+    0 while i 64 < :
+        1 i << 
+        items &
+        0 > ? yes: i add-to-score;
+        i 1 +
+    ; drop
+    
     score load
+    
+    add-to-score(int): score load + score store ;
+;
+
+get-line(int line-nr) int ptr:
+    line-nr 16 * lines + load
+    line-nr 16 * 8 + lines + load as ptr
+;
+
+split-in-halfs(int size ptr location) int ptr int ptr:
+    size 2 /
+    dup 
+    dup location + swap 
+    location 
 ;

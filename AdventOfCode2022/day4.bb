@@ -9,84 +9,96 @@ lines get-lines
 
 alloc[8] sum
 alloc[8] sum2
-inc(ptr):
-    dup load 1 + swap store
-;
+
+bump(ptr): dup load 1 + swap store ;
 
 using line-count:
     0 while linenr line-count < :
-        linenr lines parse-line 
+        linenr get-line parse-line 
         using a b c d:
-            a c = 
-            b d =
-            + ?
-            yes: 
-                sum inc
-                sum2 inc
-            ;
+            is-exact-overlap ? yes: sum bump sum2 bump ;
             no:
-                a c < 
+                is-completely-overlapping ? yes: sum bump sum2 bump;
+                no:
+                    is-partially-overlapping ? yes: sum2 bump ;
+                ;
+            ;
+            
+            is-exact-overlap() bool: 
+                a c =
+                b d =
+                +
+            ;
+            
+            is-completely-overlapping() bool: 
+                a c <
                 b d >
-                + 2 = ? yes: sum inc ;
+                + 2 =
                 
                 c a <
                 d b >
-                + 2 = ? yes: sum inc ;
+                + 2 =
                 
+                +
+            ;
+            
+            is-partially-overlapping() bool: 
                 a c <=
                 b c >=
-                + 2 = ? yes: sum2 inc ;
-            
+                + 2 =
+                
                 c a <=
                 d a >=
-                + 2 = ? yes: sum2 inc ;
+                + 2 =
+                
+                +
             ;
         ;
+        
         linenr 1 +
-    ;
-    drop
+    ; drop
 ;
 
 "part 1: " prints sum load print
 "part 2: " prints sum2 load print
 
-parse-line(int ptr) int int int int:
-    using line-index lines:
-        line-index 16 *     lines + load
-        line-index 16 * 8 + lines + load as ptr
-    ;
-    using size pointer:
-        size 0 = ? 
-        yes: 1 2 3 4;
-        no:
-            size pointer "," index-of
-            using index:
-                index pointer parse-elf-range
-                size 1 - index - pointer 1 + index + parse-elf-range
-            ;
-        ;
-       
-    ;
+get-line(int line-nr) int ptr:
+    line-nr 16 *     lines + load
+    line-nr 16 * 8 + lines + load as ptr
 ;
 
-index-of(int ptr int ptr)int:
-    load-byte swap drop
+parse-line(int size ptr pointer) int int int int:
+    is-line-empty? 
+    yes: 1 2 3 4 ;
+    no:
+        size pointer 0"," index-of
+        using index:
+            index pointer parse-elf-range
+            size 1 - index - pointer 1 + index + parse-elf-range
+        ;
+    ;
+    
+    is-line-empty() bool: size 0 = ;
+;
+
+index-of(int ptr 0str)int:
+    load-byte 
     using size pointer char:
         0 while i size < :
-            i pointer + load-byte char = ?
+            i get-character-at char = ?
             yes: i size + ;
             no: i 1 + ;
         ;
         size -
     ;
+    
+    get-character-at(int) int: pointer + load-byte ;
 ;
 
-parse-elf-range(int ptr) int int:
-    using size pointer:
-        size pointer "-" index-of
-        using index:
-            index pointer parse-number
-            size 1 - index - pointer 1 + index + parse-number
-        ;
+parse-elf-range(int size ptr pointer) int int:
+    size pointer 0"-" index-of
+    using index:
+        index pointer parse-number
+        size 1 - index - pointer 1 + index + parse-number
     ;
 ;
