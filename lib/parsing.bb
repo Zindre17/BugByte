@@ -1,30 +1,34 @@
-# size ptr -> int
-parse-number(int ptr) int:
+parse-number(int size ptr pointer) int:
     alloc[8] number
     0 number store
-    using size pointer :
-        1 
-        while index size <=:
-            1
-            index 1 -
-            while j 0 >:
-                j 1 -
-                swap 10 * swap
-            ;
-            drop 
-            pointer size + index - as ptr load-byte 48 -
-            dup 0 >=?
-            yes: dup 10 <?
-                yes:
-                    over as int * 
-                    dup number load + number store
-                ;
-            ;
-            drop
-            drop
-            index 1 +
-        ;
-        drop 
-    ;
+    
+    0 while index size <:
+        index get-nth-character-from-end char-to-number
+        
+        dup is-between-0-and-9?
+        yes: index get-base * increment-number ;
+        no: drop ;
+        
+        index 1 +
+        
+        get-nth-character-from-end(int) int: end-of-string swap - load-byte ;
+    ; drop 
+
     number load
+
+    end-of-string() ptr: pointer size + 1 - ;
+    
+    increment-number(int): number load + number store ;
+    
+    get-base(int digit) int:
+        1 
+        digit while j 0 >:
+            10 *
+            j 1 -
+        ; drop
+    ;
+    
+    is-between-0-and-9(int) bool : dup 0 >= swap 10 < + ;
 ;
+
+char-to-number(int) int: 48 - ;
