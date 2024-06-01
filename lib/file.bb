@@ -46,10 +46,10 @@ aka PROT_READ 1
 mmap(int int int int int ptr)ptr: mmap_id syscall6 as ptr;
 
 # path -> size ptr
-read-file(ptr)int ptr:
+read-file(ptr path)int ptr:
     alloc[stat] statbuf
     
-    0 swap 0 swap open
+    0 0 path open
     dup 0 < ? yes: "Error opening: " prints dup print dup exit;
     
     using fd:
@@ -69,32 +69,42 @@ read-file(ptr)int ptr:
 ;
 
 # size ptr buffer -> count
-get-lines(int ptr ptr) int:
+get-lines(int size ptr file ptr lines) int:
     alloc[8] count
     alloc[8] prev
     0 count store
     0 prev store
-    using size file lines:  
-        0 
-        while index size < :
-            1 index file + "\n" == ? 
-            yes: 
-                index prev load - 
-                count load 16 * lines + store
-                prev load file +
-                count load 16 * 8 + lines + store
-                index 1 + prev store
-                count load 1 + count store
-            ; 
-                
-            index 1 +
-        ;
-        dup prev load -
-        count load 16 * lines + store
-        prev load file +
-        count load 16 * 8 + lines + store
-        count load 1 + count store
-        drop
+    
+    0 while index size < :
+        index file + is-newline ?
+        yes: 
+            index get-length-since-last-newline
+            get-start-position-of-next-line
+            store-line
+
+            index 1 + prev store
+            bump-count
+        ; 
+
+        index 1 +
     ;
+
+    get-length-since-last-newline
+    get-start-position-of-next-line
+    store-line
+
+    bump-count
+
     count load
+
+    is-newline(ptr) bool: load-byte 0"\n" load-byte = ;
+    
+    store-line(int ptr):
+        count load 16 * 8 + lines + store
+        count load 16 * lines + store
+    ;
+    
+    bump-count(): count load 1 + count store ;
+    get-start-position-of-next-line() ptr: prev load file + ;
+    get-length-since-last-newline(int) int : prev load - ;
 ;
