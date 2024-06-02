@@ -171,5 +171,7 @@ public static class Tokens
 
         public const string Struct = "struct";
         public const string ConstantDefinition = "aka";
+
+        public const string Repeat = "repeat";
     }
 }

@@ -403,6 +403,58 @@ internal static class Parser
                 var uniqueLabel = context.AddMemory(label);
                 meta.AddMemory(uniqueLabel, size);
             }
+            else if (token.Word.Value is Tokens.Keyword.Repeat)
+            {
+                if (tokens.Count is 0)
+                {
+                    throw new Exception($"Expected iterator label or `:` after {token}, but got nothing.");
+                }
+                var next = tokens.Dequeue();
+                PinnedStackItem iteration;
+                if (next.Word.Value is not ":")
+                {
+                    iteration = meta.PinStackItem(next);
+
+                    if (tokens.Count is 0)
+                    {
+                        throw new Exception($"Expected `:` after {next}, but got nothing.");
+                    }
+                    tokens.Dequeue();
+                }
+                else
+                {
+                    iteration = meta.PinStackItem(new Token("", new Word("i"), 0, 0));
+                }
+                // Iterator starts at 0
+                programPieces.Add(Instructions.Literal.Number(token, 0));
+
+                var repeatProgram = ParseProgram(tokens, meta, context, ";");
+                repeatProgram.Add(Instructions.PushPinnedStackItem(iteration));
+                repeatProgram.Add(Instructions.Literal.Number(token, 1));
+                repeatProgram.Add(Instructions.Operations.Add(token));
+                if (tokens.Count is 0)
+                {
+                    throw new Exception($"Unclosed repeat block.");
+                }
+                var finalToken = tokens.Dequeue();
+                if (finalToken.Word.Value is not ";")
+                {
+                    throw new Exception($"Expected `;` after {token}, but got {finalToken}");
+                }
+
+                List<IProgramPiece> conditionalProgram = [
+                    Instructions.Over(token),
+                    Instructions.Operations.LessThan(token)
+                ];
+
+                programPieces.Add(new Loop(token, iteration, conditionalProgram, repeatProgram));
+
+                // Drop the last iterator value and the given count to repeat
+                programPieces.Add(Instructions.Drop(token));
+                programPieces.Add(Instructions.Drop(token));
+
+                meta.UnpinStackItem(iteration.Token);
+            }
             else if (token.Word.Value is Tokens.Keyword.Duplicate)
             {
                 programPieces.Add(Instructions.Duplicate(token));
