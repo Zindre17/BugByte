@@ -644,6 +644,7 @@ internal static class Instructions
         {
             var assembly = new[]{
                 ";-- Modulo --",
+                "  xor rdx, rdx",
                 "  pop rbx",
                 "  pop rax",
                 "  div rbx",
