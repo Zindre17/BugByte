@@ -4,7 +4,7 @@ include "../lib/str.bb"
 
 0"day5.txt" read-file
 
-alloc[80000] lines
+str[8000] lines
 lines get-lines
 
 alloc[80000] stacks

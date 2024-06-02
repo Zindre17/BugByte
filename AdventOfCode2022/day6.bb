@@ -4,11 +4,12 @@ include "../lib/str.bb"
 
 0"day6.txt" read-file
 
-int cursor
-alloc[32] window
-alloc[112] longWindow
 aka longSize 14
 aka shortSize 4
+
+int cursor
+int[4] window
+int[14] longWindow
 
 # drop drop
 using streamSize streamStart:

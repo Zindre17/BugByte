@@ -2,7 +2,7 @@ include "../lib/file.bb"
 
 0"./day2.txt" read-file
 
-alloc[800000] lines
+str[80000] lines
 lines get-lines
 
 int sum

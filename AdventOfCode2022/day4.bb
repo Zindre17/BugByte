@@ -3,7 +3,7 @@ include "../lib/parsing.bb"
 
 0"./day4.txt" read-file
 
-alloc[80000] lines
+str[8000] lines
 
 lines get-lines
 

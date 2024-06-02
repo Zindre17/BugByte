@@ -1,6 +1,6 @@
 include "../lib/file.bb"
 
-alloc[80000] lines
+str[8000] lines
 
 0"./day3.txt" read-file
 lines get-lines

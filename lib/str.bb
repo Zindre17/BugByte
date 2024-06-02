@@ -4,7 +4,7 @@ words(int ptr) ptr int:
     0 counter store
     int lastword
     0 lastword store
-    alloc[1600] words-array
+    str[100] words-array
     
     trim-start
     using size location:
