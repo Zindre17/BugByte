@@ -1,4 +1,4 @@
-1 while i 100 <: 
+100 repeat i : 
     i 15 % 0 =? 
     yes: "fizzbuzz\n" prints;
     no: 
@@ -10,6 +10,4 @@
             no: i print;
         ;
     ;
-    i 1 +
 ;
-drop
