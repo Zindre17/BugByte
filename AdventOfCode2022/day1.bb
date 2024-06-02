@@ -6,11 +6,11 @@ alloc[80000] lines
 0"./day1.txt" read-file 
 lines get-lines
 
-alloc[8] max
-alloc[8] current
+int max
+int current
 
-alloc[8] two
-alloc[8] three
+int two
+int three
 
 0 max store
 0 current store

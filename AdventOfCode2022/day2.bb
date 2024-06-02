@@ -5,10 +5,10 @@ include "../lib/file.bb"
 alloc[800000] lines
 lines get-lines
 
-alloc[8] sum
+int sum
 0 sum store
 
-alloc[8] sum2
+int sum2
 0 sum2 store
 
 using line-count:

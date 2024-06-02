@@ -9,7 +9,7 @@ lines get-lines
 
 alloc[80000] stacks
 alloc[800] stacksizes
-alloc[8] stackcountmem
+int stackcountmem
 
 0 get-line find-stack-count
 stackcountmem store

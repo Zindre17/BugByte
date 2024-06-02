@@ -7,8 +7,8 @@ alloc[80000] lines
 
 lines get-lines
 
-alloc[8] sum
-alloc[8] sum2
+int sum
+int sum2
 
 bump(ptr): dup load 1 + swap store ;
 

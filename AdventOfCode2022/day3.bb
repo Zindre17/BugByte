@@ -5,10 +5,10 @@ alloc[80000] lines
 0"./day3.txt" read-file
 lines get-lines
 
-alloc[8] sum
+int sum
 0 sum store
 
-alloc[8] sum2
+int sum2
 0 sum2 store
 
 using line-count:
@@ -50,7 +50,7 @@ add-to-sum2(int): sum2 load + sum2 store ;
 
 # size ptr -> number
 get-items-bitwise(int size ptr pointer) int:
-    alloc[8] items
+    int items
     0 items store
     
     0 while i size <:
@@ -79,7 +79,7 @@ is-upper-case(int) bool: 97 < ;
 
 # number -> number
 get-priority-sum(int items) int:
-    alloc[8] score   
+    int score   
     0 score store
     
     0 while i 64 < :

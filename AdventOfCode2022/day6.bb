@@ -4,7 +4,7 @@ include "../lib/str.bb"
 
 0"day6.txt" read-file
 
-alloc[8] cursor
+int cursor
 alloc[32] window
 alloc[112] longWindow
 aka longSize 14
@@ -91,7 +91,7 @@ shiftItemLeft(ptr int):
 bufferPosition(int ptr) ptr: swap 8 * + ;
 
 hasDuplicates(ptr int) bool: 
-    alloc[8] sum
+    int sum
     0 sum store
     
     1 -
