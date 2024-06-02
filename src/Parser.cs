@@ -321,6 +321,21 @@ internal static class Parser
             {
                 programPieces.Add(Instructions.Syscall(6, token));
             }
+            else if (Tokens.DataTypes.TryParseDataType(token.Word.Value, out var dataType))
+            {
+                if (tokens.Count is 0)
+                {
+                    throw new Exception($"Expected identifier after {token}, but got nothing.");
+                }
+                var identifier = tokens.Dequeue();
+                var memoryLabel = context.AddMemory(identifier);
+                var size = dataType switch
+                {
+                    DataType.String => 16,
+                    _ => 8
+                };
+                meta.AddMemory(memoryLabel, size);
+            }
             else if (token.Word.Value is Tokens.Keyword.Allocate)
             {
                 if (tokens.Count is 0)

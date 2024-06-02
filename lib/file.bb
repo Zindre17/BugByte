@@ -70,8 +70,8 @@ read-file(ptr path)int ptr:
 
 # size ptr buffer -> count
 get-lines(int size ptr file ptr lines) int:
-    alloc[8] count
-    alloc[8] prev
+    int count
+    int prev
     0 count store
     0 prev store
     

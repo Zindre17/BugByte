@@ -1,5 +1,5 @@
 parse-number(int size ptr pointer) int:
-    alloc[8] number
+    int number
     0 number store
     
     0 while index size <:

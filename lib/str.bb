@@ -1,8 +1,8 @@
 # string -> ptr to words, # of words
 words(int ptr) ptr int:
-    alloc[8] counter
+    int counter
     0 counter store
-    alloc[8] lastword
+    int lastword
     0 lastword store
     alloc[1600] words-array
     
