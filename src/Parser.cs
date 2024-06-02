@@ -327,14 +327,33 @@ internal static class Parser
                 {
                     throw new Exception($"Expected identifier after {token}, but got nothing.");
                 }
-                var identifier = tokens.Dequeue();
+
+                var next = tokens.Dequeue();
+                var identifier = next;
+                var count = 1;
+                if (next.Word.Value is "[")
+                {
+                    var countToken = tokens.Dequeue();
+                    if (tokens.Count is 0)
+                    {
+                        throw new Exception($"Expected count after {countToken}, but got nothing.");
+                    }
+                    count = int.Parse(countToken.Word.Value);
+                    if (tokens.Count is 0)
+                    {
+                        throw new Exception($"Expected `]` after {countToken}, but got nothing.");
+                    }
+                    tokens.Dequeue();
+
+                    identifier = tokens.Dequeue();
+                }
                 var memoryLabel = context.AddMemory(identifier);
                 var size = dataType switch
                 {
                     DataType.String => 16,
                     _ => 8
                 };
-                meta.AddMemory(memoryLabel, size);
+                meta.AddMemory(memoryLabel, size * count);
             }
             else if (token.Word.Value is Tokens.Keyword.Allocate)
             {
