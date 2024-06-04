@@ -10,7 +10,7 @@ read(int ptr int)int: read_id syscall3;
 aka open_id 2
 open(int int ptr)int: open_id syscall3;
 
-struct stat:
+struct stat-data:
     st_dev 8
     st_ino 8
     st_nlink 8
@@ -47,7 +47,7 @@ mmap(int int int int int ptr)ptr: mmap_id syscall6 as ptr;
 
 # path -> size ptr
 read-file(ptr path)int ptr:
-    alloc[stat] statbuf
+    stat-data statbuf
     
     0 0 path open
     dup 0 < ? yes: "Error opening: " prints dup print dup exit;
@@ -57,14 +57,14 @@ read-file(ptr path)int ptr:
         dup 0 < ? yes: "Error statting: " prints dup print dup exit;
         drop
         
-        0 fd MAP_PRIVATE PROT_READ statbuf stat.st_size load 0 as ptr mmap
+        0 fd MAP_PRIVATE PROT_READ statbuf stat-data.st_size load 0 as ptr mmap
         dup as int 0 < ? yes: "Error mmaping: " prints dup print dup as int exit;
         
         fd close
         dup 0 < ? yes: "Error closing: " prints dup print dup exit;
         drop
         
-        statbuf stat.st_size load swap 
+        statbuf stat-data.st_size load swap 
     ;
 ;
 

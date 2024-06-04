@@ -323,37 +323,11 @@ internal static class Parser
             }
             else if (Tokens.DataTypes.TryParseDataType(token.Word.Value, out var dataType))
             {
-                if (tokens.Count is 0)
-                {
-                    throw new Exception($"Expected identifier after {token}, but got nothing.");
-                }
-
-                var next = tokens.Dequeue();
-                var identifier = next;
-                var count = 1;
-                if (next.Word.Value is "[")
-                {
-                    var countToken = tokens.Dequeue();
-                    if (tokens.Count is 0)
-                    {
-                        throw new Exception($"Expected count after {countToken}, but got nothing.");
-                    }
-                    count = int.Parse(countToken.Word.Value);
-                    if (tokens.Count is 0)
-                    {
-                        throw new Exception($"Expected `]` after {countToken}, but got nothing.");
-                    }
-                    tokens.Dequeue();
-
-                    identifier = tokens.Dequeue();
-                }
-                var memoryLabel = context.AddMemory(identifier);
-                var size = dataType switch
-                {
-                    DataType.String => 16,
-                    _ => 8
-                };
-                meta.AddMemory(memoryLabel, size * count);
+                ParseTypedAllocation(tokens, meta, context, token, Typing.Create(dataType));
+            }
+            else if (context.TryGetStructure(token.Word.Value, out var structure))
+            {
+                ParseTypedAllocation(tokens, meta, context, token, Typing.Create(structure));
             }
             else if (token.Word.Value is Tokens.Keyword.Allocate)
             {
@@ -372,27 +346,20 @@ internal static class Parser
                     throw new Exception($"Expected size or struct after {expectedBracket}, but got nothing.");
                 }
 
-                var sizeOrStruct = tokens.Dequeue();
-                if (int.TryParse(sizeOrStruct.Word.Value, out var size))
+                var sizeToken = tokens.Dequeue();
+                if (!int.TryParse(sizeToken.Word.Value, out var size))
                 {
-                }
-                else if (context.TryGetStructure(sizeOrStruct.Word.Value, out var structure))
-                {
-                    size = structure.Size;
-                }
-                else
-                {
-                    throw new Exception($"Expected size or struct after {expectedBracket}, but got {sizeOrStruct}");
+                    throw new Exception($"Expected size or struct after {expectedBracket}, but got {sizeToken}");
                 }
 
                 if (tokens.Count is 0)
                 {
-                    throw new Exception($"Expected `]` after {sizeOrStruct}, but got nothing.");
+                    throw new Exception($"Expected `]` after {sizeToken}, but got nothing.");
                 }
                 expectedBracket = tokens.Dequeue();
                 if (expectedBracket.Word.Value is not "]")
                 {
-                    throw new Exception($"Expected `]` after {sizeOrStruct}, but got {expectedBracket}");
+                    throw new Exception($"Expected `]` after {sizeToken}, but got {expectedBracket}");
                 }
 
                 if (tokens.Count is 0)
@@ -515,11 +482,11 @@ internal static class Parser
                 }
                 var structName = parts[0];
                 var fieldName = parts[1];
-                if (!context.TryGetStructure(structName, out var structure))
+                if (!context.TryGetStructure(structName, out var structureDefinition))
                 {
                     throw new Exception($"Unknown structure {structName}.");
                 }
-                if (!structure.Fields.TryGetValue(fieldName, out var field))
+                if (!structureDefinition.Fields.TryGetValue(fieldName, out var field))
                 {
                     throw new Exception($"Unknown member {fieldName}.");
                 }
@@ -573,6 +540,37 @@ internal static class Parser
         }
 
         return programPieces;
+    }
+
+    private static void ParseTypedAllocation(Queue<Token> tokens, GlobalContext meta, Context context, Token token, TypingType typing)
+    {
+        if (tokens.Count is 0)
+        {
+            throw new Exception($"Expected identifier after {token}, but got nothing.");
+        }
+
+        var next = tokens.Dequeue();
+        var identifier = next;
+        var count = 1;
+        if (next.Word.Value is "[")
+        {
+            var countToken = tokens.Dequeue();
+            if (tokens.Count is 0)
+            {
+                throw new Exception($"Expected count after {countToken}, but got nothing.");
+            }
+            count = int.Parse(countToken.Word.Value);
+            if (tokens.Count is 0)
+            {
+                throw new Exception($"Expected `]` after {countToken}, but got nothing.");
+            }
+            tokens.Dequeue();
+
+            identifier = tokens.Dequeue();
+        }
+        var memoryLabel = context.AddMemory(identifier);
+
+        meta.AddMemory(memoryLabel, typing.GetSize() * count);
     }
 
     private static Loop ParseLoop(Token token, Queue<Token> tokens, GlobalContext meta, Context context)
@@ -871,5 +869,29 @@ internal static class Parameter
     {
         NamedParameter namedParameter => namedParameter.Name,
         _ => throw new Exception("No name for this parameter."),
+    };
+}
+
+internal abstract record TypingType;
+internal record PrimitiveType(DataType DataType) : TypingType;
+internal record ComplexType(Structure Structure) : TypingType;
+
+internal static class Typing
+{
+    internal static TypingType Create(DataType dataType) => new PrimitiveType(dataType);
+    internal static TypingType Create(Structure structure) => new ComplexType(structure);
+
+    internal static int GetSize(this TypingType type) => type switch
+    {
+        PrimitiveType primitive => primitive.DataType switch
+        {
+            DataType.Number => 8,
+            DataType.Pointer => 8,
+            DataType.String => 16,
+            DataType.ZeroTerminatedString => 16,
+            _ => throw new Exception($"Unknown data type {primitive.DataType}."),
+        },
+        ComplexType complex => complex.Structure.Size,
+        _ => throw new Exception("Unknown type."),
     };
 }
