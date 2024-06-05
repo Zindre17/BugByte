@@ -64,7 +64,7 @@ add-to-current(int) : current load + current store ;
 
 get-line-size(int) int: 16 * lines + load ;
 get-line-start(int) ptr: 16 * lines + 8 + load as ptr ;
-get-line(int line-nr) int ptr: 
+get-line(int line-nr) str: 
     line-nr get-line-size
     line-nr get-line-start
 ;

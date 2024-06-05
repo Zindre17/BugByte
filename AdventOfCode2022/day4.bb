@@ -62,7 +62,7 @@ using line-count:
 "part 1: " prints sum load print
 "part 2: " prints sum2 load print
 
-get-line(int line-nr) int ptr:
+get-line(int line-nr) str:
     line-nr 16 *     lines + load
     line-nr 16 * 8 + lines + load as ptr
 ;
@@ -81,7 +81,7 @@ parse-line(int size ptr pointer) int int int int:
     is-line-empty() bool: size 0 = ;
 ;
 
-index-of(int ptr 0str)int:
+index-of(str 0str)int:
     load-byte 
     using size pointer char:
         0 while i size < :

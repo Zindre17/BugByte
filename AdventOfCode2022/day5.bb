@@ -71,7 +71,7 @@ using line-count stack-number-line:
 is-slot-empty(int) bool : 0" " load-byte = ;
 
 # 3 characters per stack + 1 space between. Adding 1 to length to account for the last stack not having a space after it.
-find-stack-count(int ptr) int : drop 1 + 4 / ;
+find-stack-count(str) int : drop 1 + 4 / ;
 
 find-stack-number-line(int line-count)int:
     0 1 -
@@ -118,7 +118,7 @@ parse-command(int)int int int:
     
     size-index(int) ptr: 16 * words-array + ;
     start-index(int) ptr: 16 * 8 + words-array + ;
-    word-at-index(int) int ptr: dup size-index load swap start-index load as ptr;
+    word-at-index(int) str: dup size-index load swap start-index load as ptr;
 ;
 
 show-tops():
@@ -165,7 +165,7 @@ is-crate-number-line(ptr)int: 1 + load-byte 0"1" load-byte = ;
 
 bump(int)int: 1 + ;
 
-get-line(int line-nr) int ptr:
+get-line(int line-nr) str:
     line-nr 16 *     lines + load
     line-nr 16 * 8 + lines + load as ptr
 ;

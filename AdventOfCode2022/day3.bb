@@ -94,12 +94,12 @@ get-priority-sum(int items) int:
     add-to-score(int): score load + score store ;
 ;
 
-get-line(int line-nr) int ptr:
+get-line(int line-nr) str:
     line-nr 16 * lines + load
     line-nr 16 * 8 + lines + load as ptr
 ;
 
-split-in-halfs(int size ptr location) int ptr int ptr:
+split-in-halfs(int size ptr location) str str:
     size 2 /
     dup 
     dup location + swap 

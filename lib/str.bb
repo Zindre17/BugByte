@@ -1,5 +1,5 @@
 # string -> ptr to words, # of words
-words(int ptr) ptr int:
+words(str) ptr int:
     int counter
     0 counter store
     int lastword
@@ -34,13 +34,13 @@ words(int ptr) ptr int:
     get-start-position-of-next-word() ptr: location lastword load + ;
     get-next-size-position() ptr: counter load 16 * words-array + ;
     get-next-word-start-position() ptr: counter load 16 * 8 + words-array + ;
-    store-word(int ptr):
+    store-word(str):
         get-next-word-start-position store
         get-next-size-position store
     ;
 ;
 
-trim-start(int size ptr location) int ptr:
+trim-start(int size ptr location) str:
     index-of-first-non-space 
     trim-start-by
 
@@ -53,7 +53,7 @@ trim-start(int size ptr location) int ptr:
         size - 
     ;
     
-    trim-start-by(int amount) int ptr:
+    trim-start-by(int amount) str:
         size amount -
         location amount +
     ;

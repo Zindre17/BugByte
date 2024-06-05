@@ -8,7 +8,7 @@ read(int ptr int)int: read_id syscall3;
 
 # mode flags path -> fd | error
 aka open_id 2
-open(int int ptr)int: open_id syscall3;
+open(int int 0str)int: open_id syscall3;
 
 struct stat-data:
     st_dev 8
@@ -33,7 +33,7 @@ struct stat-data:
 
 # statbuf path -> 0 | error
 aka stat_id 4
-stat(ptr ptr)int: stat_id syscall2;
+stat(ptr 0str)int: stat_id syscall2;
 
 # statbuf fd -> 0 | error
 aka fstat_id 5
@@ -46,7 +46,7 @@ aka PROT_READ 1
 mmap(int int int int int ptr)ptr: mmap_id syscall6 as ptr;
 
 # path -> size ptr
-read-file(ptr path)int ptr:
+read-file(0str path) str :
     stat-data statbuf
     
     0 0 path open
@@ -99,7 +99,7 @@ get-lines(int size ptr file ptr lines) int:
 
     is-newline(ptr) bool: load-byte 0"\n" load-byte = ;
     
-    store-line(int ptr):
+    store-line(str):
         count load 16 * 8 + lines + store
         count load 16 * lines + store
     ;
