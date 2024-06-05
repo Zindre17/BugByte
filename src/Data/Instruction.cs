@@ -26,7 +26,7 @@ internal interface IProgramPiece : ITypeCheckable, IAssemblable
 
 internal static class Instructions
 {
-    internal static Instruction Cast(Token token, DataType pointer)
+    internal static Instruction Cast(Token token, Primitives pointer)
     {
         return new(token, [], stack =>
         {
@@ -83,7 +83,7 @@ internal static class Instructions
             $"  mov rax, 60",
             $"  syscall",
         };
-        return new(token, assembly, Contract.Consumer(DataType.Number));
+        return new(token, assembly, Contract.Consumer(Primitives.Number));
     }
 
     internal static Instruction Jump(Token token, string startLabel)
@@ -103,7 +103,7 @@ internal static class Instructions
             $"  cmp rax, 0",
             $"  jnz {endLabel}",
         };
-        return new(token, assembly, Contract.Consumer(DataType.Number));
+        return new(token, assembly, Contract.Consumer(Primitives.Number));
     }
 
     internal static Instruction JumpIfZero(Token token, string label)
@@ -114,7 +114,7 @@ internal static class Instructions
             $"  cmp rax, 0",
             $"  jz {label}",
         };
-        return new(token, assembly, Contract.Consumer(DataType.Number));
+        return new(token, assembly, Contract.Consumer(Primitives.Number));
     }
 
     internal static Instruction Load(Token token)
@@ -132,11 +132,11 @@ internal static class Instructions
                 throw new Exception("Stack is empty.");
             }
             var (top, _) = stack.Pop();
-            if (top is not DataType.Pointer)
+            if (top is not Primitives.Pointer)
             {
                 throw new Exception($"Expected pointer on the stack, but got {top} ({token})");
             }
-            stack.Push((DataType.Number, token));
+            stack.Push((Primitives.Number, token));
         });
     }
 
@@ -156,11 +156,11 @@ internal static class Instructions
                 throw new Exception($"Stack is empty ({token})");
             }
             var (top, origin) = stack.Pop();
-            if (top is not DataType.Pointer)
+            if (top is not Primitives.Pointer)
             {
                 throw new Exception($"Expected pointer on the stack, but got {top} from {origin}");
             }
-            stack.Push((DataType.Number, token));
+            stack.Push((Primitives.Number, token));
         });
     }
 
@@ -235,7 +235,7 @@ internal static class Instructions
             $"  syscall",
             $"  pop rax",
         };
-        return new(token, assembly, Contract.Consumer(DataType.Number));
+        return new(token, assembly, Contract.Consumer(Primitives.Number));
     }
 
     internal static Instruction PrintString(Token token)
@@ -248,7 +248,7 @@ internal static class Instructions
             "  mov rax, 1",
             "  syscall",
         };
-        return new(token, assembly, Contract.Consumer(DataType.Number, DataType.Pointer));
+        return new(token, assembly, Contract.Consumer(Primitives.Number, Primitives.Pointer));
     }
 
     internal static Instruction PushMemoryPointer(Token token, string label)
@@ -258,7 +258,7 @@ internal static class Instructions
             $"  mov rax, {label}",
             $"  push rax",
         };
-        return new(token, assembly, Contract.Producer(DataType.Pointer));
+        return new(token, assembly, Contract.Producer(Primitives.Pointer));
     }
 
     internal static Instruction PushPinnedStackItem(PinnedStackItem item)
@@ -290,7 +290,7 @@ internal static class Instructions
             }
             var (a, _) = stack.Pop();
             stack.Pop();
-            if (a is not DataType.Pointer)
+            if (a is not Primitives.Pointer)
             {
                 throw new Exception($"Expected pointer on the stack, but got {a}.");
             }
@@ -308,7 +308,7 @@ internal static class Instructions
                 throw new Exception("Expected at least one item on the stack, but it was empty.");
             }
             var (top, _) = stack.Peek();
-            if (top is not DataType.Pointer)
+            if (top is not Primitives.Pointer)
             {
                 throw new Exception($"Expected pointer on the stack, but got {top}.");
             }
@@ -383,7 +383,7 @@ internal static class Instructions
             {
                 stack.Pop();
             }
-            stack.Push((DataType.Number, token));
+            stack.Push((Primitives.Number, token));
         });
     }
 
@@ -422,7 +422,7 @@ internal static class Instructions
                 "  mov rax, 1",
                 "  push rax",
             };
-            return new(token, assembly, Contract.Producer(DataType.Number));
+            return new(token, assembly, Contract.Producer(Primitives.Number));
         }
 
         public static Instruction No(Token token)
@@ -432,7 +432,7 @@ internal static class Instructions
                 "  mov rax, 0",
                 "  push rax",
             };
-            return new(token, assembly, Contract.Producer(DataType.Number));
+            return new(token, assembly, Contract.Producer(Primitives.Number));
         }
     }
 
@@ -448,7 +448,7 @@ internal static class Instructions
                 $"  mov rax, s{str.Index}",
                 $"  push rax",
             };
-            return new(token, assembly, Contract.Producer(DataType.Number, DataType.Pointer));
+            return new(token, assembly, Contract.Producer(Primitives.Number, Primitives.Pointer));
         }
 
         internal static Instruction NullTerminatedString(Token token, int index)
@@ -458,7 +458,7 @@ internal static class Instructions
                 $"  mov rax, ns{index}",
                 $"  push rax",
             };
-            return new(token, assembly, Contract.Producer(DataType.Pointer));
+            return new(token, assembly, Contract.Producer(Primitives.Pointer));
         }
 
         internal static Instruction Number(Token token, long number)
@@ -468,13 +468,13 @@ internal static class Instructions
                 $"  mov rax, {number}",
                 $"  push rax",
             };
-            return new(token, assembly, Contract.Producer(DataType.Number));
+            return new(token, assembly, Contract.Producer(Primitives.Number));
         }
     }
 
     public static class Operations
     {
-        private static Contract CommonOperatorContract => new([DataType.Number, DataType.Number], [DataType.Number]);
+        private static Contract CommonOperatorContract => new([Primitives.Number, Primitives.Number], [Primitives.Number]);
 
         public static Instruction Add(Token token)
         {
@@ -493,17 +493,17 @@ internal static class Instructions
                 }
                 var (a, _) = stack.Pop();
                 var (b, _) = stack.Pop();
-                if (a is not DataType.Number && b is not DataType.Number)
+                if (a is not Primitives.Number && b is not Primitives.Number)
                 {
-                    throw new Exception($"Expected at least one of the top two elements on the stack to be {DataType.Number}, but got {a} and {b}.");
+                    throw new Exception($"Expected at least one of the top two elements on the stack to be {Primitives.Number}, but got {a} and {b}.");
                 }
-                if (a is DataType.Pointer || b is DataType.Pointer)
+                if (a is Primitives.Pointer || b is Primitives.Pointer)
                 {
-                    stack.Push((DataType.Pointer, token));
+                    stack.Push((Primitives.Pointer, token));
                 }
                 else
                 {
-                    stack.Push((DataType.Number, token));
+                    stack.Push((Primitives.Number, token));
                 }
             });
         }
@@ -526,17 +526,17 @@ internal static class Instructions
                 var (a, _) = stack.Pop();
                 var (b, _) = stack.Pop();
 
-                if (a is DataType.Pointer && b is DataType.Pointer)
+                if (a is Primitives.Pointer && b is Primitives.Pointer)
                 {
-                    stack.Push((DataType.Number, token));
+                    stack.Push((Primitives.Number, token));
                 }
-                else if (a is DataType.Pointer || b is DataType.Pointer)
+                else if (a is Primitives.Pointer || b is Primitives.Pointer)
                 {
-                    stack.Push((DataType.Pointer, token));
+                    stack.Push((Primitives.Pointer, token));
                 }
                 else
                 {
-                    stack.Push((DataType.Number, token));
+                    stack.Push((Primitives.Number, token));
                 }
             });
         }
@@ -747,7 +747,7 @@ internal static class Instructions
                 $"  push rax",
                 $".string_equal_end:",
             };
-            return new(token, assembly, Contract.Consumer(DataType.Number, DataType.Pointer, DataType.Number, DataType.Pointer) with { Out = [DataType.Number] });
+            return new(token, assembly, Contract.Consumer(Primitives.Number, Primitives.Pointer, Primitives.Number, Primitives.Pointer) with { Out = [Primitives.Number] });
         }
 
         internal static IProgramPiece Xor(Token token)

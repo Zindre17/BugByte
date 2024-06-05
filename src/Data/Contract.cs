@@ -1,11 +1,15 @@
 namespace BugByte;
 
-internal record Contract(DataType[] In, DataType[] Out)
+internal record Contract(Primitives[] In, Primitives[] Out)
 {
-    public Contract() : this([], []) { }
+    public Contract() : this(Array.Empty<Primitives>(), []) { }
 
-    public static Contract Producer(params DataType[] outTypes) => new([], outTypes);
-    public static Contract Consumer(params DataType[] inTypes) => new(inTypes, []);
+    public Contract(TypingType[] @in, TypingType[] @out) : this(@in.SelectMany(Typing.Decompose).ToArray(), @out.SelectMany(Typing.Decompose).ToArray()) { }
+
+    public static Contract Producer(params Primitives[] outTypes) => new([], outTypes);
+    public static Contract Producer(params TypingType[] outTypes) => new([], outTypes);
+    public static Contract Consumer(params Primitives[] inTypes) => new(inTypes, []);
+    public static Contract Consumer(params TypingType[] inTypes) => new(inTypes, []);
 
     public void TypeCheck(Token token, TypeStack stack)
     {
@@ -45,8 +49,8 @@ internal record Contract(DataType[] In, DataType[] Out)
         }
         else
         {
-            var nextIns = new Stack<DataType>(next.In);
-            var prevOuts = new Stack<DataType>(_out);
+            var nextIns = new Stack<Primitives>(next.In);
+            var prevOuts = new Stack<Primitives>(_out);
             while (nextIns.Count > 0)
             {
                 var nextIn = nextIns.Pop();

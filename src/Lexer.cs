@@ -28,6 +28,8 @@ internal static class Lexer
 
 internal record Token(string Filename, IWord Word, int Line, int Column)
 {
+    public static Token OnlyValue(string value) => new("", new Word(value), 0, 0);
+
     public override string ToString() => $"`{Word}` @ {Filename}:{Line}:{Column}";
 };
 
@@ -35,7 +37,7 @@ public static class Tokens
 {
     public static bool IsReserved(string token)
     {
-        if (IsReserved(typeof(DataTypes), token))
+        if (IsReserved(typeof(Primitive), token))
         {
             return true;
         }
@@ -63,42 +65,30 @@ public static class Tokens
         return false;
     }
 
-    public static class DataTypes
+    public static class Primitive
     {
         public const string Number = "int";
         public const string Boolean = "bool";
         public const string Pointer = "ptr";
-        public const string String = "str";
-        public const string NullTerminatedString = "0str";
 
-        public static bool TryParseDataType(string token, out DataType dataType)
+        public static bool TryParsePrimitive(string token, out Primitives dataType)
         {
             if (token == Number)
             {
-                dataType = DataType.Number;
+                dataType = Primitives.Number;
                 return true;
             }
             if (token == Boolean)
             {
-                dataType = DataType.Number;
+                dataType = Primitives.Number;
                 return true;
             }
             if (token == Pointer)
             {
-                dataType = DataType.Pointer;
+                dataType = Primitives.Pointer;
                 return true;
             }
-            if (token == String)
-            {
-                dataType = DataType.String;
-                return true;
-            }
-            if (token == NullTerminatedString)
-            {
-                dataType = DataType.Pointer;
-                return true;
-            }
-            dataType = DataType.Unknown;
+            dataType = Primitives.Unknown;
             return false;
         }
     }

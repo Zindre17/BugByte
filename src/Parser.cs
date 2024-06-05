@@ -49,7 +49,7 @@ internal static class Parser
             }
             else if (token.Word.Value is Tokens.Keyword.ConstantDefinition)
             {
-                innerContext.AddConstant(ParseConstant(token, tokenQueue, innerContext));
+                innerContext.AddConstant(ParseConstant(token, tokenQueue, innerContext, meta));
             }
             else if (tokenQueue.Count > 0 && tokenQueue.Peek().Word.Value is "(")
             {
@@ -87,7 +87,7 @@ internal static class Parser
                     throw new Exception($"Expected `:` after function output, but got {outputEndToken}.");
                 }
 
-                var contract = new Contract([.. arguments.Select(a => a.DataType)], [.. output.Select(o => o.DataType)]);
+                var contract = new Contract([.. arguments.Select(a => a.Typing)], [.. output.Select(o => o.Typing)]);
                 var functionContext = MetaEvaluate(tokenQueue, meta, innerContext, ";", out var innerRemaining, out var remaining);
                 functionContext.Name = functionName;
                 tokenQueue = (Queue<Token>)remaining;
@@ -174,17 +174,17 @@ internal static class Parser
             }
             else if (context.TryGetConstant(token.Word.Value, out var constant))
             {
-                if (constant.Type is DataType.String)
+                if (constant.Type is ConstantTypes.String)
                 {
                     var str = meta.StringLiterals[constant.Text!];
                     programPieces.Add(Instructions.Literal.String(token, str));
                 }
-                else if (constant.Type is DataType.ZeroTerminatedString)
+                else if (constant.Type is ConstantTypes.ZeroTerminatedString)
                 {
                     var zstr = meta.NullTerminatedStringLiterals[constant.Text!];
                     programPieces.Add(Instructions.Literal.NullTerminatedString(token, zstr.Index));
                 }
-                else if (constant.Type is DataType.Number)
+                else if (constant.Type is ConstantTypes.Number)
                 {
                     programPieces.Add(Instructions.Literal.Number(token, constant.Number!.Value));
                 }
@@ -321,7 +321,7 @@ internal static class Parser
             {
                 programPieces.Add(Instructions.Syscall(6, token));
             }
-            else if (Tokens.DataTypes.TryParseDataType(token.Word.Value, out var dataType))
+            else if (Tokens.Primitive.TryParsePrimitive(token.Word.Value, out var dataType))
             {
                 ParseTypedAllocation(tokens, meta, context, token, Typing.Create(dataType));
             }
@@ -520,17 +520,17 @@ internal static class Parser
                     throw new Exception($"Expected type after {token}, but got nothing.");
                 }
                 var typeToken = tokens.Dequeue();
-                if (typeToken.Word.Value is not Tokens.DataTypes.Number and not Tokens.DataTypes.Pointer)
+                if (typeToken.Word.Value is not Tokens.Primitive.Number and not Tokens.Primitive.Pointer)
                 {
                     throw new Exception($"Expected type after {token}, but got {typeToken}.");
                 }
-                if (typeToken.Word.Value is Tokens.DataTypes.Number)
+                if (typeToken.Word.Value is Tokens.Primitive.Number)
                 {
-                    programPieces.Add(Instructions.Cast(token, DataType.Number));
+                    programPieces.Add(Instructions.Cast(token, Primitives.Number));
                 }
-                else if (typeToken.Word.Value is Tokens.DataTypes.Pointer)
+                else if (typeToken.Word.Value is Tokens.Primitive.Pointer)
                 {
-                    programPieces.Add(Instructions.Cast(token, DataType.Pointer));
+                    programPieces.Add(Instructions.Cast(token, Primitives.Pointer));
                 }
             }
             else
@@ -705,16 +705,16 @@ internal static class Parser
         while (tokens.Count > 0 && tokens.Peek().Word.Value != terminationToken)
         {
             var token = tokens.Dequeue();
-            if (!Tokens.DataTypes.TryParseDataType(token.Word.Value, out var dataType))
+            if (!TryParseTyping(context, token, out var typing))
             {
-                throw new Exception($"Expected data type, but got {token}");
+                throw new Exception($"Expected type, but got {token}.");
             }
 
             if (tokens.Count is 0
-            || Tokens.DataTypes.TryParseDataType(tokens.Peek().Word.Value, out _)
+            || TryParseTyping(context, tokens.Peek(), out _)
             || tokens.Peek().Word.Value == terminationToken)
             {
-                parameters.Add(Parameter.Create(dataType));
+                parameters.Add(Parameter.Create(typing));
                 continue;
             }
 
@@ -725,10 +725,21 @@ internal static class Parser
                 throw new Exception($"Cannot use reserved keyword {nameToken} as a name for input.");
             }
 
-            parameters.Add(Parameter.Create(nameToken, dataType));
+            parameters.Add(Parameter.Create(nameToken, typing));
         }
 
         return parameters;
+    }
+
+    private static bool TryParseTyping(Context context, Token token, out TypingType typing)
+    {
+        typing = token.Word.Value switch
+        {
+            _ when Tokens.Primitive.TryParsePrimitive(token.Word.Value, out var dataType) => Typing.Create(dataType),
+            _ when context.TryGetStructure(token.Word.Value, out var structure) => Typing.Create(structure),
+            _ => null!,
+        };
+        return typing is not null;
     }
 
     private static Context ParseInclude(Token token, Queue<Token> tokens, GlobalContext meta)
@@ -754,7 +765,7 @@ internal static class Parser
         return MetaEvaluate(words, meta, new(), null, out _, out _);
     }
 
-    private static Constant ParseConstant(Token token, Queue<Token> tokens, Context context)
+    private static Constant ParseConstant(Token token, Queue<Token> tokens, Context context, GlobalContext meta)
     {
         if (tokens.Count < 2)
         {
@@ -768,19 +779,21 @@ internal static class Parser
         var constant = tokens.Dequeue();
         if (int.TryParse(constant.Word.Value, out var constInt))
         {
-            return new(nameToken, DataType.Number, Number: constInt);
+            return new(nameToken, ConstantTypes.Number, Number: constInt);
         }
         else if (constant.Word is StringLiteralWord constString)
         {
-            return new(nameToken, DataType.String, Text: constString.Value);
+            meta.StringLiterals[constString.Value] = new(constString.InnerValue, stringLiteralCounter++);
+            return new(nameToken, ConstantTypes.String, Text: constString.Value);
         }
         else if (constant.Word is NullTerminatedStringLiteralWord constZeroString)
         {
-            return new(nameToken, DataType.ZeroTerminatedString, Text: constZeroString.Value);
+            meta.NullTerminatedStringLiterals[constZeroString.Value] = new(constZeroString.InnerValue, nullTerminatedStringLiteralCounter++);
+            return new(nameToken, ConstantTypes.ZeroTerminatedString, Text: constZeroString.Value);
         }
         else
         {
-            throw new Exception($"Expected number after `aka`, but got {constant} @ {constant.Filename}:{constant.Line}:{constant.Column}");
+            throw new Exception($"Expected number/string after `aka`, but got {constant} @ {constant.Filename}:{constant.Line}:{constant.Column}");
         }
     }
 
@@ -825,7 +838,7 @@ internal static class Parser
                 throw new Exception($"Expected identifier, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
             }
 
-            fields.Add(member.Word.Value, new(offset, size, member.Word.Value));
+            fields.Add(member.Word.Value, new(offset, size, Primitives.Unknown, member.Word.Value));
             offset += size;
 
             if (tokens.Count is 0)
@@ -841,27 +854,44 @@ internal record Structure(Token Token, Dictionary<string, StructureField> Fields
 {
     public string Name => Token.Word.Value;
     internal int Size => Fields.Sum(f => f.Value.Size);
+
+    public static Structure String { get; } = new(Token.OnlyValue("str"), new()
+    {
+        ["length"] = new StructureField(0, 8, Primitives.Number, "length"),
+        ["start"] = new StructureField(8, 8, Primitives.Pointer, "start"),
+    });
+
+    public static Structure ZeroTerminatedString { get; } = new(Token.OnlyValue("0str"), new()
+    {
+        ["start"] = new StructureField(0, 8, Primitives.Pointer, "start"),
+    });
+
+    public Primitives[] Decompose() => Fields.Values
+        .OrderBy(f => f.Offset)
+        .Select(f => f.Type)
+        .ToArray();
 }
 
-internal record StructureField(int Offset, int Size, string Name);
+internal record StructureField(int Offset, int Size, Primitives Type, string Name);
 
-public enum DataType
+public enum Primitives
 {
     Number,
     Pointer,
-    String,
-    ZeroTerminatedString,
     Unknown,
 }
 
-internal abstract record ParameterType(DataType DataType);
-internal record NamedParameter(Token Name, DataType DataType) : ParameterType(DataType);
-internal record AnonymousParameter(DataType DataType) : ParameterType(DataType);
+
+internal abstract record ParameterType(TypingType Typing);
+internal record NamedParameter(Token Name, TypingType Typing) : ParameterType(Typing);
+internal record AnonymousParameter(TypingType Typing) : ParameterType(Typing);
 
 internal static class Parameter
 {
-    internal static ParameterType Create(Token nameToken, DataType dataType) => new NamedParameter(nameToken, dataType);
-    internal static ParameterType Create(DataType dataType) => new AnonymousParameter(dataType);
+    internal static ParameterType Create(Token nameToken, Primitives primitive) => new NamedParameter(nameToken, Typing.Create(primitive));
+    internal static ParameterType Create(Primitives privmitive) => new AnonymousParameter(Typing.Create(privmitive));
+    internal static ParameterType Create(TypingType typing) => new AnonymousParameter(typing);
+    internal static ParameterType Create(Token nameToken, TypingType typing) => new NamedParameter(nameToken, typing);
 
     internal static bool IsNamed(this ParameterType parameter) => parameter is NamedParameter;
 
@@ -873,25 +903,33 @@ internal static class Parameter
 }
 
 internal abstract record TypingType;
-internal record PrimitiveType(DataType DataType) : TypingType;
+internal record PrimitiveType(Primitives DataType) : TypingType;
 internal record ComplexType(Structure Structure) : TypingType;
 
 internal static class Typing
 {
-    internal static TypingType Create(DataType dataType) => new PrimitiveType(dataType);
+    internal static TypingType Create(Primitives dataType) => new PrimitiveType(dataType);
     internal static TypingType Create(Structure structure) => new ComplexType(structure);
 
     internal static int GetSize(this TypingType type) => type switch
     {
         PrimitiveType primitive => primitive.DataType switch
         {
-            DataType.Number => 8,
-            DataType.Pointer => 8,
-            DataType.String => 16,
-            DataType.ZeroTerminatedString => 16,
+            Primitives.Number => 8,
+            Primitives.Pointer => 8,
             _ => throw new Exception($"Unknown data type {primitive.DataType}."),
         },
         ComplexType complex => complex.Structure.Size,
+        _ => throw new Exception("Unknown type."),
+    };
+
+    internal static Primitives[] Decompose(this TypingType type) => type switch
+    {
+        PrimitiveType primitive => [primitive.DataType],
+        ComplexType complex => complex.Structure.Fields.Values
+            .OrderBy(f => f.Offset)
+            .Select(f => f.Type)
+            .ToArray(),
         _ => throw new Exception("Unknown type."),
     };
 }

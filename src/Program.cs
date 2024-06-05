@@ -128,12 +128,12 @@ static bool RunExternalCommand(string command, string arguments, bool printInfo 
     }
 }
 
-class TypeStack : Stack<(DataType, Token)>
+class TypeStack : Stack<(Primitives, Token)>
 {
     public TypeStack() : base() { }
 
     // NOTE: To create a copy of a stack, we need to do it twice to get the elements back in order.
-    public TypeStack(IEnumerable<(DataType, Token)> collection) : base(new Stack<(DataType, Token)>(collection)) { }
+    public TypeStack(IEnumerable<(Primitives, Token)> collection) : base(new Stack<(Primitives, Token)>(collection)) { }
 
     internal (TypeStackDiff, string?) Diff(TypeStack other)
     {

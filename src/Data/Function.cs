@@ -22,7 +22,7 @@ internal record Function(Token Token, Contract Contract, bool AutoUsings, List<I
             Console.WriteLine($"Did not produce expected amount of values: {stack.Count} != {Contract.Out.Length}\n{stack}");
             return false;
         }
-        var outs = new Stack<DataType>(Contract.Out);
+        var outs = new Stack<Primitives>(Contract.Out);
         while (stack.Count > 0)
         {
             var (type, _) = stack.Pop();

@@ -20,6 +20,11 @@ internal record Context
     private Dictionary<string, FunctionMeta> Functions { get; } = [];
     private Dictionary<string, Constant> Constants { get; } = [];
     private Dictionary<string, Structure> Structures { get; } = [];
+    private static readonly Dictionary<string, Structure> builtInStructures = new()
+    {
+        [Structure.String.Name] = Structure.String,
+        [Structure.ZeroTerminatedString.Name] = Structure.ZeroTerminatedString,
+    };
 
     public bool IsReserved(string name)
     {
@@ -53,6 +58,10 @@ internal record Context
 
     public void AddStructure(Structure structure)
     {
+        if (builtInStructures.TryGetValue(structure.Name, out var builtIn))
+        {
+            throw new Exception($"Cannot redefine built-in structure {structure.Name} at {structure.Token}.");
+        }
         if (!Structures.TryAdd(structure.Name, structure))
         {
             throw new Exception($"Duplicate structure {structure.Name} at {structure.Token} and {Structures[structure.Name].Token}.");
@@ -147,6 +156,11 @@ internal record Context
 
     internal bool TryGetStructure(string value, out Structure structure)
     {
+        if (builtInStructures.TryGetValue(value, out var builtIn))
+        {
+            structure = builtIn;
+            return true;
+        }
         if (Structures.TryGetValue(value, out var structure2))
         {
             structure = structure2;
