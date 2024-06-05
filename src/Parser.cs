@@ -61,10 +61,10 @@ internal static class Parser
                 }
 
                 var arguments = ParseParameters(innerContext, tokenQueue, ")");
-                List<Token> inputPins = [];
+                List<ParameterType> inputPins = [];
                 if (arguments.All(Parameter.IsNamed))
                 {
-                    inputPins.AddRange(arguments.Select(Parameter.GetNameToken));
+                    inputPins = arguments;
                 }
                 else if (arguments.Any(Parameter.IsNamed))
                 {
@@ -156,7 +156,7 @@ internal static class Parser
             else if (context.TryGetFunction(token.Word.Value, out var func))
             {
                 List<IProgramPiece> funcProgram = [];
-                var pinnedInputItems = func.InputPins.Reverse<Token>().Select(meta.PinStackItem).ToList();
+                var pinnedInputItems = func.InputPins.Reverse<ParameterType>().Select(p => meta.PinStackItem(p.GetNameToken(), p.Typing.Decompose().Length));
 
                 pinnedInputItems.ForEach(item => funcProgram.Add(Instructions.PinStackItem(item)));
 
@@ -380,7 +380,7 @@ internal static class Parser
                 PinnedStackItem iteration;
                 if (next.Word.Value is not ":")
                 {
-                    iteration = meta.PinStackItem(next);
+                    iteration = meta.PinStackItem(next, 1);
 
                     if (tokens.Count is 0)
                     {
@@ -390,7 +390,7 @@ internal static class Parser
                 }
                 else
                 {
-                    iteration = meta.PinStackItem(new Token("", new Word("i"), 0, 0));
+                    iteration = meta.PinStackItem(Token.OnlyValue("i"), 1);
                 }
                 // Iterator starts at 0
                 programPieces.Add(Instructions.Literal.Number(token, 0));
@@ -449,7 +449,7 @@ internal static class Parser
                 }
                 while (toBePinned.Count > 0)
                 {
-                    var pinnedStackItem = meta.PinStackItem(toBePinned.Pop());
+                    var pinnedStackItem = meta.PinStackItem(toBePinned.Pop(), 1);
                     programPieces.Add(Instructions.PinStackItem(pinnedStackItem));
                     pins.Add(pinnedStackItem);
                 }
@@ -585,7 +585,7 @@ internal static class Parser
             throw new Exception($"Cannot use reserved keyword {iteratorLabel} as a loop iterator.");
         }
 
-        var iterator = meta.PinStackItem(iteratorLabel);
+        var iterator = meta.PinStackItem(iteratorLabel, 1);
 
         if (tokens.Count is 0)
         {

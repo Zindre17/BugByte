@@ -16,20 +16,20 @@ internal record GlobalContext(
 
     private int pinnedStackItemsCount = 0;
 
-    public PinnedStackItem PinStackItem(Token token)
+    public PinnedStackItem PinStackItem(Token token, int count)
     {
         if (PinnedStackItems.TryGetValue(token.Word.Value, out var stack))
         {
-            stack.Push(new(token, pinnedStackItemsCount));
+            stack.Push(new(token, count, pinnedStackItemsCount));
         }
         else
         {
             stack = new Stack<PinnedStackItem>();
-            stack.Push(new(token, pinnedStackItemsCount));
+            stack.Push(new(token, count, pinnedStackItemsCount));
             PinnedStackItems.Add(token.Word.Value, stack);
         }
 
-        pinnedStackItemsCount++;
+        pinnedStackItemsCount += count;
         return stack.Peek();
     }
 

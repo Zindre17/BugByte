@@ -190,20 +190,24 @@ internal static class Instructions
 
     internal static Instruction PinStackItem(PinnedStackItem item)
     {
-        var assembly = new[]{
+        var assembly = Enumerable.Range(0, item.ItemCount).SelectMany(i => new[]{
             ";-- pin stack element --",
             $"  pop rax",
-            $"  mov [r14 + {item.Index * 8}], rax",
+            $"  mov [r14 + {(item.Index*8)+(i*8)}], rax",
             // $"  add r15, 8",
-        };
+        }).ToArray();
+
         return new(item.Token, assembly, stack =>
         {
-            if (stack.Count is 0)
+            Enumerable.Range(0, item.ItemCount).ForEach(i =>
             {
-                throw new Exception($"Stack is empty {item.Token}");
-            }
-            var (type, origin) = stack.Pop();
-            item.Type = type;
+                if (stack.Count is 0)
+                {
+                    throw new Exception($"Stack is empty {item.Token}");
+                }
+                var (type, origin) = stack.Pop();
+                item.Types[i] = type;
+            });
         });
     }
 
@@ -263,14 +267,16 @@ internal static class Instructions
 
     internal static Instruction PushPinnedStackItem(PinnedStackItem item)
     {
-        var assembly = new[]{
+        var assembly = Enumerable.Range(0, item.ItemCount).Reverse().SelectMany(i =>
+         new[]{
             ";-- push pinned stack item --",
-            $"  mov rax, [r14 + {item.Index * 8}]",
+            $"  mov rax, [r14 + {(item.Index*8) + (i*8)}]",
             $"  push rax",
-        };
+        }).ToArray();
+
         return new(item.Token, assembly, stack =>
         {
-            stack.Push((item.Type, item.Token));
+            Enumerable.Range(0, item.ItemCount).Reverse().ForEach(i => stack.Push((item.Types[i], item.Token)));
         });
     }
 
