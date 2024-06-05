@@ -38,15 +38,13 @@ internal record GlobalContext(
         var name = token.Word.Value;
         if (PinnedStackItems.TryGetValue(name, out var stack))
         {
-            if (stack.Count is 1)
+            var item = stack.Pop();
+            if (stack.Count is 0)
             {
                 PinnedStackItems.Remove(name);
             }
-            else
-            {
-                PinnedStackItems[name].Pop();
-            }
-            pinnedStackItemsCount--;
+
+            pinnedStackItemsCount -= item.ItemCount;
         }
         else
         {

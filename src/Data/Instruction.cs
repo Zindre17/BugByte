@@ -298,7 +298,7 @@ internal static class Instructions
             stack.Pop();
             if (a is not Primitives.Pointer)
             {
-                throw new Exception($"Expected pointer on the stack, but got {a}.");
+                throw new Exception($"Expected pointer on the stack, but got {a} {token}");
             }
         });
     }

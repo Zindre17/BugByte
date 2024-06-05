@@ -156,7 +156,9 @@ internal static class Parser
             else if (context.TryGetFunction(token.Word.Value, out var func))
             {
                 List<IProgramPiece> funcProgram = [];
-                var pinnedInputItems = func.InputPins.Reverse<ParameterType>().Select(p => meta.PinStackItem(p.GetNameToken(), p.Typing.Decompose().Length));
+                var pinnedInputItems = func.InputPins.Reverse<ParameterType>()
+                    .Select(p => meta.PinStackItem(p.GetNameToken(), p.Typing.Decompose().Length))
+                    .ToList();
 
                 pinnedInputItems.ForEach(item => funcProgram.Add(Instructions.PinStackItem(item)));
 
