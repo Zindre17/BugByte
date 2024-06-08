@@ -487,6 +487,12 @@ internal static class Parser
                     {
                         throw new Exception($"Expected number after {bracketToken}, but got {indexToken}");
                     }
+
+                    if (index >= memoryAllocation.Count)
+                    {
+                        throw new Exception($"Index {index} is out of bounds for memory allocation {memoryAllocation.GetAssemblyLabel()}.");
+                    }
+
                     if (tokens.Count >= 2 && tokens.Peek().Word.Value.StartsWith('.'))
                     {
                         var fieldNameToken = tokens.Dequeue();
