@@ -264,11 +264,11 @@ internal static class Instructions
         return new(token, assembly, Contract.Consumer(Primitives.Number, Primitives.Pointer));
     }
 
-    internal static Instruction PushMemoryPointer(Token token, string label, int offset)
+    internal static Instruction PushMemoryPointer(Token token, string label, OffsetType offset)
     {
         var assembly = new[]{
             ";-- push memory pointer --",
-            $"  mov rax, {label} + {offset}",
+            $"  mov rax, {label} + {offset.GetValue()}",
             $"  push rax",
         };
         return new(token, assembly, Contract.Producer(Primitives.Pointer));

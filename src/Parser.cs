@@ -473,7 +473,23 @@ internal static class Parser
             }
             else if (context.TryGetMemory(token.Word.Value, out var memoryAllocation))
             {
-                programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation.GetAssemblyLabel(), 0));
+                OffsetType offset = Offset.Create(0);
+                if (tokens.Count > 3 && tokens.Peek().Word.Value is "[")
+                {
+                    if (memoryAllocation.Count is 1)
+                    {
+                        throw new Exception($"Cannot index into memory allocation {memoryAllocation.GetAssemblyLabel()} because it is not an array.");
+                    }
+                    var bracketToken = tokens.Dequeue();
+                    var indexToken = tokens.Dequeue();
+                    tokens.Dequeue();
+                    if (!int.TryParse(indexToken.Word.Value, out var index))
+                    {
+                        throw new Exception($"Expected number after {bracketToken}, but got {indexToken}");
+                    }
+                    offset = Offset.Create(index * memoryAllocation.Typing.GetSize());
+                }
+                programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation.GetAssemblyLabel(), offset));
             }
             else if (token.Word.Value.Contains('.'))
             {
@@ -952,9 +968,9 @@ internal static class Typing
         _ => throw new Exception("Unknown type."),
     };
 
-    internal static int GetOffsetOf(this TypingType type, string fieldName) => type switch
+    internal static OffsetType GetOffsetOf(this TypingType type, string fieldName) => type switch
     {
-        ComplexType complex => complex.Structure.Fields[fieldName].Offset,
+        ComplexType complex => Offset.Create(complex.Structure.Fields[fieldName].Offset),
         _ => throw new Exception("Primitives have no fields."),
     };
 
@@ -972,5 +988,18 @@ internal static class Typing
             .Select(f => f.Type)
             .ToArray(),
         _ => throw new Exception("Unknown type."),
+    };
+}
+
+internal abstract record OffsetType;
+internal record IntOffsetType(int Offset) : OffsetType;
+
+internal static class Offset
+{
+    internal static OffsetType Create(int offset) => new IntOffsetType(offset);
+    internal static int GetValue(this OffsetType offset) => offset switch
+    {
+        IntOffsetType intOffset => intOffset.Offset,
+        _ => throw new Exception("Unknown offset type."),
     };
 }
