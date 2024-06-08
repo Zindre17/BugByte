@@ -9,7 +9,7 @@ internal record Function(Token Token, Contract Contract, bool AutoUsings, List<I
     private bool MatchesContract(Dictionary<string, Stack<Primitives>> runtimePins)
     {
         var stack = new TypeStack();
-        foreach (var @in in Contract.In)
+        foreach (var @in in Contract.In.Decompose())
         {
             stack.Push((@in, new Token("", new Word(""), 0, 0)));
         }
@@ -17,17 +17,17 @@ internal record Function(Token Token, Contract Contract, bool AutoUsings, List<I
         {
             piece.TypeCheck(stack, runtimePins);
         }
-        if (stack.Count != Contract.Out.Length)
+        if (stack.Count != Contract.Out.Decompose().Length)
         {
             Console.WriteLine($"Did not produce expected amount of values: {stack.Count} != {Contract.Out.Length}\n{stack}");
             return false;
         }
-        var outs = new Stack<Primitives>(Contract.Out);
+        var outs = new Stack<TypingType>(Contract.Out.Decompose());
         while (stack.Count > 0)
         {
             var (type, _) = stack.Pop();
             var expected = outs.Pop();
-            if (type != expected)
+            if (type != expected && !(type.IsPointer() && expected.IsPointer()))
             {
                 Console.WriteLine($"Did not produce expected type: {type} != {expected}\n{stack}");
                 return false;

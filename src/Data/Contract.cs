@@ -1,32 +1,29 @@
 namespace BugByte;
 
-internal record Contract(Primitives[] In, Primitives[] Out)
+internal record Contract(TypingType[] In, TypingType[] Out)
 {
-    public Contract() : this(Array.Empty<Primitives>(), []) { }
+    public Contract(Primitives[] @in, Primitives[] @out) : this(@in.Select(Typing.Create).ToArray(), @out.Select(Typing.Create).ToArray()) { }
 
-    public Contract(TypingType[] @in, TypingType[] @out) : this(@in.SelectMany(Typing.Decompose).ToArray(), @out.SelectMany(Typing.Decompose).ToArray()) { }
-
-    public static Contract Producer(params Primitives[] outTypes) => new([], outTypes);
+    public static Contract Producer(params Primitives[] outTypes) => new([], outTypes.Select(Typing.Create).ToArray());
     public static Contract Producer(params TypingType[] outTypes) => new([], outTypes);
-    public static Contract Consumer(params Primitives[] inTypes) => new(inTypes, []);
+    public static Contract Consumer(params Primitives[] inTypes) => new(inTypes.Select(Typing.Create).ToArray(), []);
     public static Contract Consumer(params TypingType[] inTypes) => new(inTypes, []);
 
     public void TypeCheck(Token token, TypeStack stack)
     {
-        if (stack.Count < In.Length)
+        if (stack.Count < In.Decompose().Length)
         {
             throw new Exception($"Not enough elements on the stack ({token}). Expected {In.Length} elements, but got {stack.Count}.");
         }
-        for (var index = In.Length - 1; index >= 0; index--)
+        foreach (var expected in In.Decompose().Reverse())
         {
-            var expected = In[index];
             var (actual, actualToken) = stack.Pop();
-            if (actual != expected)
+            if (actual != expected && !(actual.IsPointer() && expected.IsPointer()))
             {
                 throw new Exception($"Type mismatch: `{actual}`({actualToken}) != `{expected}` for {token}\n{stack}");
             }
         }
-        foreach (var type in Out)
+        foreach (var type in Out.Decompose())
         {
             stack.Push((type, token));
         }
@@ -49,8 +46,8 @@ internal record Contract(Primitives[] In, Primitives[] Out)
         }
         else
         {
-            var nextIns = new Stack<Primitives>(next.In);
-            var prevOuts = new Stack<Primitives>(_out);
+            var nextIns = new Stack<TypingType>(next.In);
+            var prevOuts = new Stack<TypingType>(_out);
             while (nextIns.Count > 0)
             {
                 var nextIn = nextIns.Pop();

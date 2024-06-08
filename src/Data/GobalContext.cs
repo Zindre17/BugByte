@@ -25,7 +25,7 @@ internal record GlobalContext(
         }
 
         stack.Push(PinnedStackItem.Create(token, typing, pinnedStackItemsCount));
-        pinnedStackItemsCount += typing.Decompose().Length;
+        pinnedStackItemsCount += typing.ToPrimitives().Length;
         return stack.Peek();
     }
 
@@ -40,7 +40,7 @@ internal record GlobalContext(
                 PinnedStackItems.Remove(name);
             }
 
-            pinnedStackItemsCount -= item.Typing.Decompose().Length;
+            pinnedStackItemsCount -= item.Typing.ToPrimitives().Length;
         }
         else
         {

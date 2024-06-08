@@ -129,12 +129,12 @@ static bool RunExternalCommand(string command, string arguments, bool printInfo 
     }
 }
 
-class TypeStack : Stack<(Primitives, Token)>
+class TypeStack : Stack<(TypingType, Token)>
 {
     public TypeStack() : base() { }
 
     // NOTE: To create a copy of a stack, we need to do it twice to get the elements back in order.
-    public TypeStack(IEnumerable<(Primitives, Token)> collection) : base(new Stack<(Primitives, Token)>(collection)) { }
+    public TypeStack(IEnumerable<(TypingType, Token)> collection) : base(new Stack<(TypingType, Token)>(collection)) { }
 
     internal (TypeStackDiff, string?) Diff(TypeStack other)
     {
@@ -149,7 +149,7 @@ class TypeStack : Stack<(Primitives, Token)>
             var (type, token) = this.ElementAt(i);
             var (otherType, otherToken) = other.ElementAt(i);
             stringBuilder.AppendLine($"{i}: {type} ({token.Filename}:{token.Line}:{token.Column}) | {otherType} ({otherToken.Filename}:{otherToken.Line}:{otherToken.Column}))");
-            if (type != otherType)
+            if (type != otherType && !(type.IsPointer() && otherType.IsPointer()))
             {
                 result = TypeStackDiff.TypeDifference;
             }

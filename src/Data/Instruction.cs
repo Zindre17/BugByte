@@ -26,7 +26,7 @@ internal interface IProgramPiece : ITypeCheckable, IAssemblable
 
 internal static class Instructions
 {
-    internal static Instruction Cast(Token token, Primitives pointer)
+    internal static Instruction Cast(Token token, Primitives newType)
     {
         return new(token, [], (stack, runtimePins) =>
         {
@@ -35,7 +35,7 @@ internal static class Instructions
                 throw new Exception("Stack is empty.");
             }
             stack.Pop();
-            stack.Push((pointer, token));
+            stack.Push((Typing.Create(newType), token));
         });
     }
 
@@ -132,11 +132,11 @@ internal static class Instructions
                 throw new Exception("Stack is empty.");
             }
             var (top, _) = stack.Pop();
-            if (top is not Primitives.Pointer)
+            if (!top.IsPointer())
             {
                 throw new Exception($"Expected pointer on the stack, but got {top} ({token})");
             }
-            stack.Push((Primitives.Number, token));
+            stack.Push((top.GetInnerType(), token));
         });
     }
 
@@ -156,11 +156,11 @@ internal static class Instructions
                 throw new Exception($"Stack is empty ({token})");
             }
             var (top, origin) = stack.Pop();
-            if (top is not Primitives.Pointer)
+            if (!top.IsPointer())
             {
                 throw new Exception($"Expected pointer on the stack, but got {top} from {origin}");
             }
-            stack.Push((Primitives.Number, token));
+            stack.Push((Typing.Create(Primitives.Number), token));
         });
     }
 
@@ -190,7 +190,7 @@ internal static class Instructions
 
     internal static Instruction PinStackItem(PinnedStackItemType item)
     {
-        var types = item.Typing.Decompose();
+        var types = item.Typing.ToPrimitives();
         var assembly = Enumerable.Range(0, types.Length).SelectMany(i => new[]{
             ";-- pin stack element --",
             $"  pop rax",
@@ -214,7 +214,7 @@ internal static class Instructions
                         pinStack = new Stack<Primitives>();
                         runtimePins.Add(item.Token.Word.Value, pinStack);
                     }
-                    pinStack.Push(topType);
+                    pinStack.Push(topType.ToPrimitives().Single());
                 }
             });
         });
@@ -264,14 +264,27 @@ internal static class Instructions
         return new(token, assembly, Contract.Consumer(Primitives.Number, Primitives.Pointer));
     }
 
-    internal static Instruction PushMemoryPointer(Token token, string label, OffsetType offset)
+    internal static Instruction PushMemoryPointer(Token token, MemoryAllocationType allocation, int index)
     {
+        var offset = index * 8;
         var assembly = new[]{
             ";-- push memory pointer --",
-            $"  mov rax, {label} + {offset.GetValue()}",
+            $"  mov rax, {allocation.GetAssemblyLabel()} + {offset}",
             $"  push rax",
         };
-        return new(token, assembly, Contract.Producer(Primitives.Pointer));
+        return new(token, assembly, Contract.Producer(Typing.CreatePointer(allocation.Typing)));
+    }
+
+    internal static Instruction PushMemoryPointer(Token token, MemoryAllocationType allocation, int index, string fieldName)
+    {
+        var field = allocation.Typing.GetField(fieldName);
+        var offset = index * 8 + field.Offset;
+        var assembly = new[]{
+            ";-- push memory pointer --",
+            $"  mov rax, {allocation.GetAssemblyLabel()} + {offset}",
+            $"  push rax",
+        };
+        return new(token, assembly, Contract.Producer(Typing.CreatePointer(Typing.Create(field.Type))));
     }
 
     internal static Instruction PushFieldOfPinnedStackItem(PinnedStackItemType item, string fieldName)
@@ -285,13 +298,13 @@ internal static class Instructions
 
         return new(item.Token, assembly, (stack, runtimePins) =>
         {
-            stack.Push((field.Type, item.Token));
+            stack.Push((Typing.Create(field.Type), item.Token));
         });
     }
 
     internal static Instruction PushPinnedStackItem(PinnedStackItemType item)
     {
-        var types = item.Typing.Decompose();
+        var types = item.Typing.ToPrimitives();
         var assembly = Enumerable.Range(0, types.Length).Reverse().SelectMany(i =>
          new[]{
             ";-- push pinned stack item --",
@@ -303,10 +316,10 @@ internal static class Instructions
         {
             if (types.Length is 1 && types[0] is Primitives.Runtime)
             {
-                stack.Push((runtimePins[item.Token.Word.Value].Peek(), item.Token));
+                stack.Push((Typing.Create(runtimePins[item.Token.Word.Value].Peek()), item.Token));
                 return;
             }
-            Enumerable.Range(0, types.Length).ForEach(i => stack.Push((types[i], item.Token)));
+            Enumerable.Range(0, types.Length).ForEach(i => stack.Push((Typing.Create(types[i]), item.Token)));
         });
     }
 
@@ -322,13 +335,13 @@ internal static class Instructions
         {
             if (stack.Count < 2)
             {
-                throw new Exception($"Stack needs to contain at least two elements, but got {stack.Count}.");
+                throw new Exception($"Stack needs to contain at least two elements, but got {stack.Count}.\n{stack}");
             }
-            var (a, _) = stack.Pop();
+            var (top, _) = stack.Pop();
             stack.Pop();
-            if (a is not Primitives.Pointer)
+            if (!top.IsPointer())
             {
-                throw new Exception($"Expected pointer on the stack, but got {a} {token}");
+                throw new Exception($"Expected pointer on the stack, but got {top} {token}");
             }
         });
     }
@@ -344,7 +357,7 @@ internal static class Instructions
                 throw new Exception("Expected at least one item on the stack, but it was empty.");
             }
             var (top, _) = stack.Peek();
-            if (top is not Primitives.Pointer)
+            if (!top.IsPointer())
             {
                 throw new Exception($"Expected pointer on the stack, but got {top}.");
             }
@@ -419,7 +432,7 @@ internal static class Instructions
             {
                 stack.Pop();
             }
-            stack.Push((Primitives.Number, token));
+            stack.Push((Typing.Create(Primitives.Number), token));
         });
     }
 
@@ -538,18 +551,8 @@ internal static class Instructions
                 }
                 var (a, _) = stack.Pop();
                 var (b, _) = stack.Pop();
-                if (a is not Primitives.Number && b is not Primitives.Number)
-                {
-                    throw new Exception($"Expected at least one of the top two elements on the stack to be {Primitives.Number}, but got {a} and {b}.");
-                }
-                if (a is Primitives.Pointer || b is Primitives.Pointer)
-                {
-                    stack.Push((Primitives.Pointer, token));
-                }
-                else
-                {
-                    stack.Push((Primitives.Number, token));
-                }
+                var c = a.Add(b);
+                stack.Push((c, token));
             });
         }
 
@@ -570,19 +573,8 @@ internal static class Instructions
                 }
                 var (a, _) = stack.Pop();
                 var (b, _) = stack.Pop();
-
-                if (a is Primitives.Pointer && b is Primitives.Pointer)
-                {
-                    stack.Push((Primitives.Number, token));
-                }
-                else if (a is Primitives.Pointer || b is Primitives.Pointer)
-                {
-                    stack.Push((Primitives.Pointer, token));
-                }
-                else
-                {
-                    stack.Push((Primitives.Number, token));
-                }
+                var c = a.Subtract(b);
+                stack.Push((c, token));
             });
         }
 
@@ -792,7 +784,7 @@ internal static class Instructions
                 $"  push rax",
                 $".string_equal_end:",
             };
-            return new(token, assembly, Contract.Consumer(Primitives.Number, Primitives.Pointer, Primitives.Number, Primitives.Pointer) with { Out = [Primitives.Number] });
+            return new(token, assembly, Contract.Consumer(Primitives.Number, Primitives.Pointer, Primitives.Number, Primitives.Pointer) with { Out = [Typing.Create(Primitives.Number)] });
         }
 
         internal static IProgramPiece Xor(Token token)

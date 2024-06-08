@@ -19,7 +19,7 @@ struct stat-data:
     st_gid 4
     st_pad0 4
     st_rdev 8
-    st_size 8
+    st_size int
     st_blksize 8
     st_blocks 8
     st_atim.tv_sec 8
@@ -57,14 +57,14 @@ read-file(0str path) str :
         dup 0 < ? yes: "Error statting: " prints dup print dup exit;
         drop
         
-        0 fd MAP_PRIVATE PROT_READ statbuf stat-data.st_size load 0 as ptr mmap
+        0 fd MAP_PRIVATE PROT_READ statbuf.st_size load 0 as ptr mmap
         dup as int 0 < ? yes: "Error mmaping: " prints dup print dup as int exit;
         
         fd close
         dup 0 < ? yes: "Error closing: " prints dup print dup exit;
         drop
         
-        statbuf stat-data.st_size load swap 
+        statbuf.st_size load swap 
     ;
 ;
 

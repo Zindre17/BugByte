@@ -490,14 +490,18 @@ internal static class Parser
                     if (tokens.Count >= 2 && tokens.Peek().Word.Value.StartsWith('.'))
                     {
                         var fieldNameToken = tokens.Dequeue();
-                        offset = Offset.Create(index * memoryAllocation.Typing.GetSize() + memoryAllocation.Typing.GetOffsetOf(fieldNameToken.Word.Value[1..]).GetValue());
+                        var fieldName = fieldNameToken.Word.Value[1..];
+                        programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index, fieldName));
                     }
                     else
                     {
-                        offset = Offset.Create(index * memoryAllocation.Typing.GetSize());
+                        programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index));
                     }
                 }
-                programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation.GetAssemblyLabel(), offset));
+                else
+                {
+                    programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, 0));
+                }
             }
             else if (token.Word.Value.Contains('.'))
             {
@@ -519,8 +523,7 @@ internal static class Parser
                 }
                 else if (context.TryGetMemory(name, out var memory))
                 {
-                    var offset = memory.Typing.GetOffsetOf(fieldName);
-                    programPieces.Add(Instructions.PushMemoryPointer(token, memory.GetAssemblyLabel(), offset));
+                    programPieces.Add(Instructions.PushMemoryPointer(token, memory, 0, fieldName));
                     continue;
                 }
                 else if (meta.PinnedStackItems.TryGetValue(name, out var pinnedItem))
@@ -877,7 +880,7 @@ internal static class Parser
             else if (TryParseTyping(context, sizeToken, out var typing))
             {
                 size = typing.GetSize();
-                type = typing.Decompose().First();
+                type = typing.ToPrimitives().First();
             }
             else
             {
@@ -955,13 +958,34 @@ internal static class Parameter
 }
 
 internal abstract record TypingType;
+
 internal record PrimitiveType(Primitives DataType) : TypingType;
 internal record ComplexType(Structure Structure) : TypingType;
+internal record PointerType(TypingType InnerType) : TypingType;
 
 internal static class Typing
 {
     internal static TypingType Create(Primitives dataType) => new PrimitiveType(dataType);
-    internal static TypingType Create(Structure structure) => new ComplexType(structure);
+    internal static TypingType Create(Structure structure) => structure.Fields.Count is 1 ? new PrimitiveType(structure.Fields.First().Value.Type) : new ComplexType(structure);
+    internal static TypingType CreatePointer(TypingType innerType) => new PointerType(innerType);
+
+    internal static bool IsPointer(this TypingType type) => type switch
+    {
+        PointerType _ => true,
+        PrimitiveType primitive => primitive.DataType is Primitives.Pointer,
+        _ => false,
+    };
+
+    internal static TypingType GetInnerType(this TypingType type) => type switch
+    {
+        PointerType pointer => pointer.InnerType,
+        PrimitiveType primitive => primitive.DataType switch
+        {
+            Primitives.Pointer => Create(Primitives.Number),
+            _ => throw new Exception("Not a pointer."),
+        },
+        _ => throw new Exception("Not a pointer."),
+    };
 
     internal static int GetSize(this TypingType type) => type switch
     {
@@ -988,9 +1012,71 @@ internal static class Typing
         _ => throw new Exception("Primitives have no fields."),
     };
 
-    internal static Primitives[] Decompose(this TypingType type) => type switch
+    internal static TypingType Add(this TypingType type, TypingType other)
+    {
+        if (type is ComplexType || other is ComplexType)
+        {
+            throw new Exception("Expected both types to be primitive.");
+        }
+
+        if (type.IsPointer() && other.IsPointer())
+        {
+            throw new Exception("Cannot add two pointers.");
+        }
+
+        if (type.IsPointer() || other.IsPointer())
+        {
+            // We don't know what type of pointer this is anymore.
+            return Create(Primitives.Pointer);
+        }
+        else
+        {
+            return Create(Primitives.Number);
+        }
+    }
+
+    internal static TypingType Subtract(this TypingType type, TypingType other)
+    {
+        if (type is ComplexType || other is ComplexType)
+        {
+            throw new Exception("Expected both types to be primitive.");
+        }
+
+        if (type.IsPointer() && other.IsPointer())
+        {
+            return Create(Primitives.Number);
+        }
+        else if (type.IsPointer() || other.IsPointer())
+        {
+            return Create(Primitives.Pointer);
+        }
+        else
+        {
+            return Create(Primitives.Number);
+        }
+    }
+
+    internal static TypingType[] Decompose(this IEnumerable<TypingType> types)
+    {
+        var decomposed = new List<TypingType>();
+        foreach (var type in types)
+        {
+            if (type is ComplexType complex)
+            {
+                decomposed.AddRange(complex.Structure.Fields.Values.Select(f => Create(f.Type)));
+            }
+            else
+            {
+                decomposed.Add(type);
+            }
+        }
+        return [.. decomposed];
+    }
+
+    internal static Primitives[] ToPrimitives(this TypingType type) => type switch
     {
         PrimitiveType primitive => [primitive.DataType],
+        PointerType pointer => [Primitives.Pointer],
         ComplexType complex => complex.Structure.Fields.Values
             .OrderBy(f => f.Offset)
             .Select(f => f.Type)
