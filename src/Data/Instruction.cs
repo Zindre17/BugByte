@@ -1,17 +1,17 @@
 
 namespace BugByte;
 
-internal record Instruction(Token Token, string[] Assembly, Action<TypeStack> TypeChecker) : IProgramPiece
+internal record Instruction(Token Token, string[] Assembly, Action<TypeStack, Dictionary<string, Stack<Primitives>>> TypeChecker) : IProgramPiece
 {
-    public Instruction(Token token, string[] assembly, Contract contract) : this(token, assembly, stack => contract.TypeCheck(token, stack)) { }
+    public Instruction(Token token, string[] assembly, Contract contract) : this(token, assembly, (stack, runtimePins) => contract.TypeCheck(token, stack)) { }
 
     public string[] Assemble() => Assembly;
-    public void TypeCheck(TypeStack stack) => TypeChecker(stack);
+    public void TypeCheck(TypeStack stack, Dictionary<string, Stack<Primitives>> runtimePins) => TypeChecker(stack, runtimePins);
 }
 
 internal interface ITypeCheckable
 {
-    void TypeCheck(TypeStack currentStack);
+    void TypeCheck(TypeStack currentStack, Dictionary<string, Stack<Primitives>> runtimePins);
 }
 
 internal interface IAssemblable
@@ -28,7 +28,7 @@ internal static class Instructions
 {
     internal static Instruction Cast(Token token, Primitives pointer)
     {
-        return new(token, [], stack =>
+        return new(token, [], (stack, runtimePins) =>
         {
             if (stack.Count is 0)
             {
@@ -45,7 +45,7 @@ internal static class Instructions
           ";-- Drop --",
           "  pop rax",
         };
-        return new(token, assembly, stack =>
+        return new(token, assembly, (stack, runtimePins) =>
         {
             if (stack.Count is 0)
             {
@@ -63,7 +63,7 @@ internal static class Instructions
           "  push rax",
           "  push rax",
         };
-        return new(token, assembly, stack =>
+        return new(token, assembly, (stack, runtimePins) =>
         {
             if (stack.Count is 0)
             {
@@ -92,7 +92,7 @@ internal static class Instructions
             ";-- jump --",
             $"  jmp {startLabel}",
         };
-        return new(token, assembly, stack => { });
+        return new(token, assembly, (stack, runtimePins) => { });
     }
 
     internal static Instruction JumpIfNotZero(Token token, string endLabel)
@@ -125,7 +125,7 @@ internal static class Instructions
             $"  mov rax, [rax]",
             $"  push rax",
         };
-        return new(token, assembly, stack =>
+        return new(token, assembly, (stack, runtimePins) =>
         {
             if (stack.Count is 0)
             {
@@ -149,7 +149,7 @@ internal static class Instructions
             $"  mov al, BYTE [rbx]",
             $"  push rax",
          };
-        return new(token, assembly, stack =>
+        return new(token, assembly, (stack, runtimePins) =>
         {
             if (stack.Count is 0)
             {
@@ -174,7 +174,7 @@ internal static class Instructions
           "  push rax",
           "  push rbx",
         };
-        return new(token, assembly, stack =>
+        return new(token, assembly, (stack, runtimePins) =>
         {
             if (stack.Count < 2)
             {
@@ -188,25 +188,34 @@ internal static class Instructions
         });
     }
 
-    internal static Instruction PinStackItem(PinnedStackItem item)
+    internal static Instruction PinStackItem(PinnedStackItemType item)
     {
-        var assembly = Enumerable.Range(0, item.ItemCount).SelectMany(i => new[]{
+        var types = item.Typing.Decompose();
+        var assembly = Enumerable.Range(0, types.Length).SelectMany(i => new[]{
             ";-- pin stack element --",
             $"  pop rax",
             $"  mov [r14 + {(item.Index*8)+(i*8)}], rax",
             // $"  add r15, 8",
         }).ToArray();
 
-        return new(item.Token, assembly, stack =>
+        return new(item.Token, assembly, (stack, runtimePins) =>
         {
-            Enumerable.Range(0, item.ItemCount).ForEach(i =>
+            Enumerable.Range(0, types.Length).ForEach(i =>
             {
                 if (stack.Count is 0)
                 {
                     throw new Exception($"Stack is empty {item.Token}");
                 }
-                var (type, origin) = stack.Pop();
-                item.Types[i] = type;
+                var (topType, _) = stack.Pop();
+                if (types[i] is Primitives.Runtime)
+                {
+                    if (!runtimePins.TryGetValue(item.Token.Word.Value, out var pinStack))
+                    {
+                        pinStack = new Stack<Primitives>();
+                        runtimePins.Add(item.Token.Word.Value, pinStack);
+                    }
+                    pinStack.Push(topType);
+                }
             });
         });
     }
@@ -218,7 +227,7 @@ internal static class Instructions
           "  pop rdi",
           "  call print",
         };
-        return new(token, assembly, stack =>
+        return new(token, assembly, (stack, runtimePins) =>
         {
             if (stack.Count is 0)
             {
@@ -255,28 +264,49 @@ internal static class Instructions
         return new(token, assembly, Contract.Consumer(Primitives.Number, Primitives.Pointer));
     }
 
-    internal static Instruction PushMemoryPointer(Token token, string label)
+    internal static Instruction PushMemoryPointer(Token token, string label, int offset)
     {
         var assembly = new[]{
             ";-- push memory pointer --",
-            $"  mov rax, {label}",
+            $"  mov rax, {label} + {offset}",
             $"  push rax",
         };
         return new(token, assembly, Contract.Producer(Primitives.Pointer));
     }
 
-    internal static Instruction PushPinnedStackItem(PinnedStackItem item)
+    internal static Instruction PushFieldOfPinnedStackItem(PinnedStackItemType item, string fieldName)
     {
-        var assembly = Enumerable.Range(0, item.ItemCount).Reverse().SelectMany(i =>
+        var field = item.Typing.GetField(fieldName);
+        var assembly = new[]{
+            ";-- push pinned stack item --",
+            $"  mov rax, [r14 + {(item.Index*8) + (item.Typing.GetSize() - 8 - field.Offset)}]",
+            $"  push rax"
+        };
+
+        return new(item.Token, assembly, (stack, runtimePins) =>
+        {
+            stack.Push((field.Type, item.Token));
+        });
+    }
+
+    internal static Instruction PushPinnedStackItem(PinnedStackItemType item)
+    {
+        var types = item.Typing.Decompose();
+        var assembly = Enumerable.Range(0, types.Length).Reverse().SelectMany(i =>
          new[]{
             ";-- push pinned stack item --",
             $"  mov rax, [r14 + {(item.Index*8) + (i*8)}]",
             $"  push rax",
         }).ToArray();
 
-        return new(item.Token, assembly, stack =>
+        return new(item.Token, assembly, (stack, runtimePins) =>
         {
-            Enumerable.Range(0, item.ItemCount).Reverse().ForEach(i => stack.Push((item.Types[i], item.Token)));
+            if (types.Length is 1 && types[0] is Primitives.Runtime)
+            {
+                stack.Push((runtimePins[item.Token.Word.Value].Peek(), item.Token));
+                return;
+            }
+            Enumerable.Range(0, types.Length).ForEach(i => stack.Push((types[i], item.Token)));
         });
     }
 
@@ -288,7 +318,7 @@ internal static class Instructions
             $"  pop rbx",
             $"  mov [rax], rbx",
         };
-        return new(token, assembly, stack =>
+        return new(token, assembly, (stack, runtimePins) =>
         {
             if (stack.Count < 2)
             {
@@ -307,7 +337,7 @@ internal static class Instructions
     {
         var offsetInstruction = Literal.Number(token, offset);
         var addInstruction = Operations.Add(token);
-        return new(token, [.. offsetInstruction.Assemble(), .. addInstruction.Assemble()], stack =>
+        return new(token, [.. offsetInstruction.Assemble(), .. addInstruction.Assemble()], (stack, runtimePins) =>
         {
             if (stack.Count is 0)
             {
@@ -318,8 +348,8 @@ internal static class Instructions
             {
                 throw new Exception($"Expected pointer on the stack, but got {top}.");
             }
-            offsetInstruction.TypeCheck(stack);
-            addInstruction.TypeCheck(stack);
+            offsetInstruction.TypeCheck(stack, runtimePins);
+            addInstruction.TypeCheck(stack, runtimePins);
         });
     }
 
@@ -332,7 +362,7 @@ internal static class Instructions
           "  push rax",
           "  push rbx",
         };
-        return new(token, assembly, stack =>
+        return new(token, assembly, (stack, runtimePins) =>
         {
             if (stack.Count < 2)
             {
@@ -379,7 +409,7 @@ internal static class Instructions
         assembly.Add("  syscall");
         assembly.Add("  push rax");
 
-        return new(token, [.. assembly], stack =>
+        return new(token, [.. assembly], (stack, runtimePins) =>
         {
             if (stack.Count < version + 1)
             {
@@ -393,23 +423,32 @@ internal static class Instructions
         });
     }
 
-    internal static Instruction UnpinStackItem(PinnedStackItem item)
+    internal static Instruction UnpinStackItem(PinnedStackItemType item)
     {
         var assembly = new[]{
             ";-- unpin stack element --",
             // $"  sub r15, 8",
         };
-        return new(item.Token, assembly, stack => { });
+        return new(item.Token, assembly, (stack, runtimePins) =>
+        {
+
+            var pinStack = runtimePins[item.Token.Word.Value];
+            pinStack.Pop();
+            if (pinStack.Count is 0)
+            {
+                runtimePins.Remove(item.Token.Word.Value);
+            }
+        });
     }
 
-    internal static Instruction UpdatePinnedStackElement(PinnedStackItem item)
+    internal static Instruction UpdatePinnedStackElement(PinnedStackItemType item)
     {
         var assembly = new[]{
             ";-- update pinned stack element --",
             $"  pop rax",
             $"  mov [r14 + {item.Index * 8}], rax",
         };
-        return new(item.Token, assembly, stack =>
+        return new(item.Token, assembly, (stack, runtimePins) =>
         {
             if (stack.Count is 0)
             {
@@ -491,7 +530,7 @@ internal static class Instructions
                 "  add rax, rbx",
                 "  push rax"
             };
-            return new(token, assembly, stack =>
+            return new(token, assembly, (stack, runtimePins) =>
             {
                 if (stack.Count < 2)
                 {
@@ -523,7 +562,7 @@ internal static class Instructions
                 "  sub rax, rbx",
                 "  push rax"
             };
-            return new(token, assembly, stack =>
+            return new(token, assembly, (stack, runtimePins) =>
             {
                 if (stack.Count < 2)
                 {

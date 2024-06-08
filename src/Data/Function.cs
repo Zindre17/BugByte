@@ -6,7 +6,7 @@ internal record Function(Token Token, Contract Contract, bool AutoUsings, List<I
 {
     public string[] Assemble() => Body.SelectMany(i => i.Assemble()).ToArray();
 
-    private bool MatchesContract()
+    private bool MatchesContract(Dictionary<string, Stack<Primitives>> runtimePins)
     {
         var stack = new TypeStack();
         foreach (var @in in Contract.In)
@@ -15,7 +15,7 @@ internal record Function(Token Token, Contract Contract, bool AutoUsings, List<I
         }
         foreach (var piece in Body)
         {
-            piece.TypeCheck(stack);
+            piece.TypeCheck(stack, runtimePins);
         }
         if (stack.Count != Contract.Out.Length)
         {
@@ -36,9 +36,9 @@ internal record Function(Token Token, Contract Contract, bool AutoUsings, List<I
         return true;
     }
 
-    public void TypeCheck(TypeStack currentStack)
+    public void TypeCheck(TypeStack currentStack, Dictionary<string, Stack<Primitives>> runtimePins)
     {
-        if (!MatchesContract())
+        if (!MatchesContract(runtimePins))
         {
             throw new Exception($"Function {Token} does not match its contract.\n{currentStack}");
         }

@@ -1,6 +1,8 @@
 namespace BugByte;
 
-internal record PinnedStackItem(Token Token, int ItemCount, int Index)
+internal record PinnedStackItemType(Token Token, TypingType Typing, int Index);
+
+public static class PinnedStackItem
 {
-    public Primitives[] Types { get; set; } = Enumerable.Repeat(Primitives.Unknown, ItemCount).ToArray();
+    internal static PinnedStackItemType Create(Token token, TypingType typing, int pinnedStackItemsCount) => new(token, typing, pinnedStackItemsCount);
 }

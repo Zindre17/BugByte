@@ -157,7 +157,7 @@ internal static class Parser
             {
                 List<IProgramPiece> funcProgram = [];
                 var pinnedInputItems = func.InputPins.Reverse<ParameterType>()
-                    .Select(p => meta.PinStackItem(p.GetNameToken(), p.Typing.Decompose().Length))
+                    .Select(p => meta.PinStackItem(p.GetNameToken(), p.Typing))
                     .ToList();
 
                 pinnedInputItems.ForEach(item => funcProgram.Add(Instructions.PinStackItem(item)));
@@ -369,8 +369,8 @@ internal static class Parser
                     throw new Exception($"Expected label for memory after {expectedBracket}, but got nothing.");
                 }
                 var label = tokens.Dequeue();
-                var uniqueLabel = context.AddMemory(label);
-                meta.AddMemory(uniqueLabel, size);
+                var memoryAllocation = context.AddMemory(label, Typing.Create(Primitives.Number), size);
+                meta.AddMemory(memoryAllocation);
             }
             else if (token.Word.Value is Tokens.Keyword.Repeat)
             {
@@ -379,10 +379,10 @@ internal static class Parser
                     throw new Exception($"Expected iterator label or `:` after {token}, but got nothing.");
                 }
                 var next = tokens.Dequeue();
-                PinnedStackItem iteration;
+                PinnedStackItemType iteration;
                 if (next.Word.Value is not ":")
                 {
-                    iteration = meta.PinStackItem(next, 1);
+                    iteration = meta.PinStackItem(next, Typing.Create(Primitives.Number));
 
                     if (tokens.Count is 0)
                     {
@@ -392,7 +392,7 @@ internal static class Parser
                 }
                 else
                 {
-                    iteration = meta.PinStackItem(Token.OnlyValue("i"), 1);
+                    iteration = meta.PinStackItem(Token.OnlyValue("i"), Typing.Create(Primitives.Number));
                 }
                 // Iterator starts at 0
                 programPieces.Add(Instructions.Literal.Number(token, 0));
@@ -434,7 +434,7 @@ internal static class Parser
             }
             else if (token.Word.Value is Tokens.Keyword.PinStackElements)
             {
-                var pins = new List<PinnedStackItem>();
+                var pins = new List<PinnedStackItemType>();
                 var toBePinned = new Stack<Token>();
                 while (tokens.Count > 0)
                 {
@@ -451,7 +451,7 @@ internal static class Parser
                 }
                 while (toBePinned.Count > 0)
                 {
-                    var pinnedStackItem = meta.PinStackItem(toBePinned.Pop(), 1);
+                    var pinnedStackItem = meta.PinStackItem(toBePinned.Pop(), Typing.Create(Primitives.Runtime));
                     programPieces.Add(Instructions.PinStackItem(pinnedStackItem));
                     pins.Add(pinnedStackItem);
                 }
@@ -471,9 +471,9 @@ internal static class Parser
                     meta.UnpinStackItem(pin.Token);
                 }
             }
-            else if (context.TryGetMemory(token, out var memoryLabel))
+            else if (context.TryGetMemory(token.Word.Value, out var memoryAllocation))
             {
-                programPieces.Add(Instructions.PushMemoryPointer(token, memoryLabel));
+                programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation.GetAssemblyLabel(), 0));
             }
             else if (token.Word.Value.Contains('.'))
             {
@@ -482,17 +482,33 @@ internal static class Parser
                 {
                     throw new Exception($"Unknown token {token}");
                 }
-                var structName = parts[0];
+                var name = parts[0];
                 var fieldName = parts[1];
-                if (!context.TryGetStructure(structName, out var structureDefinition))
+                if (context.TryGetStructure(name, out var structureDefinition))
                 {
-                    throw new Exception($"Unknown structure {structName}.");
+                    if (!structureDefinition.Fields.TryGetValue(fieldName, out var field))
+                    {
+                        throw new Exception($"Unknown member {fieldName}.");
+                    }
+                    programPieces.Add(Instructions.StructFieldOffset(token, field.Offset));
+                    continue;
                 }
-                if (!structureDefinition.Fields.TryGetValue(fieldName, out var field))
+                else if (context.TryGetMemory(name, out var memory))
                 {
-                    throw new Exception($"Unknown member {fieldName}.");
+                    var offset = memory.Typing.GetOffsetOf(fieldName);
+                    programPieces.Add(Instructions.PushMemoryPointer(token, memory.GetAssemblyLabel(), offset));
+                    continue;
                 }
-                programPieces.Add(Instructions.StructFieldOffset(token, field.Offset));
+                else if (meta.PinnedStackItems.TryGetValue(name, out var pinnedItem))
+                {
+                    programPieces.Add(Instructions.PushFieldOfPinnedStackItem(pinnedItem.Peek(), fieldName));
+                    continue;
+                }
+                else
+                {
+                    throw new Exception($"Unknown structure {name}.");
+                }
+
             }
             else if (token.Word.Value is Tokens.Keyword.Load)
             {
@@ -511,7 +527,7 @@ internal static class Parser
                 var stack = new TypeStack();
                 foreach (var programPiece in programPieces)
                 {
-                    programPiece.TypeCheck(stack);
+                    programPiece.TypeCheck(stack, []);
                 }
                 Console.WriteLine(stack);
             }
@@ -570,9 +586,9 @@ internal static class Parser
 
             identifier = tokens.Dequeue();
         }
-        var memoryLabel = context.AddMemory(identifier);
+        var memoryLabel = context.AddMemory(identifier, typing, count);
 
-        meta.AddMemory(memoryLabel, typing.GetSize() * count);
+        meta.AddMemory(memoryLabel);
     }
 
     private static Loop ParseLoop(Token token, Queue<Token> tokens, GlobalContext meta, Context context)
@@ -587,7 +603,7 @@ internal static class Parser
             throw new Exception($"Cannot use reserved keyword {iteratorLabel} as a loop iterator.");
         }
 
-        var iterator = meta.PinStackItem(iteratorLabel, 1);
+        var iterator = meta.PinStackItem(iteratorLabel, Typing.Create(Primitives.Runtime));
 
         if (tokens.Count is 0)
         {
@@ -830,7 +846,16 @@ internal static class Parser
                 break;
             }
 
-            if (!int.TryParse(sizeToken.Word.Value, out var size))
+            var type = Primitives.Unknown;
+            if (int.TryParse(sizeToken.Word.Value, out var size))
+            {
+            }
+            else if (TryParseTyping(context, sizeToken, out var typing))
+            {
+                size = typing.GetSize();
+                type = typing.Decompose().First();
+            }
+            else
             {
                 throw new Exception($"Expected integer, but got {sizeToken}.");
             }
@@ -840,7 +865,7 @@ internal static class Parser
                 throw new Exception($"Expected identifier, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
             }
 
-            fields.Add(member.Word.Value, new(offset, size, Primitives.Unknown, member.Word.Value));
+            fields.Add(member.Word.Value, new(offset, size, type, member.Word.Value));
             offset += size;
 
             if (tokens.Count is 0)
@@ -881,6 +906,7 @@ public enum Primitives
     Number,
     Pointer,
     Unknown,
+    Runtime,
 }
 
 
@@ -919,10 +945,23 @@ internal static class Typing
         {
             Primitives.Number => 8,
             Primitives.Pointer => 8,
+            Primitives.Runtime => 8,
             _ => throw new Exception($"Unknown data type {primitive.DataType}."),
         },
         ComplexType complex => complex.Structure.Size,
         _ => throw new Exception("Unknown type."),
+    };
+
+    internal static int GetOffsetOf(this TypingType type, string fieldName) => type switch
+    {
+        ComplexType complex => complex.Structure.Fields[fieldName].Offset,
+        _ => throw new Exception("Primitives have no fields."),
+    };
+
+    internal static StructureField GetField(this TypingType type, string fieldName) => type switch
+    {
+        ComplexType complex => complex.Structure.Fields[fieldName],
+        _ => throw new Exception("Primitives have no fields."),
     };
 
     internal static Primitives[] Decompose(this TypingType type) => type switch

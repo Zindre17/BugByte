@@ -19,5 +19,5 @@ internal record Constant(Token Token, ConstantTypes Type, long? Number = null, s
     public string Name => Token.Word.Value;
     public string[] Assemble() => throw new NotImplementedException();
 
-    public void TypeCheck(TypeStack currentStack) => Contract.TypeCheck(Token, currentStack);
+    public void TypeCheck(TypeStack currentStack, Dictionary<string, Stack<Primitives>> runtimePins) => Contract.TypeCheck(Token, currentStack);
 }

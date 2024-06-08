@@ -32,7 +32,7 @@ internal record Branching(Token Token, List<IProgramPiece>? YesBranch, List<IPro
         return [.. assembly];
     }
 
-    public void TypeCheck(TypeStack currentStack)
+    public void TypeCheck(TypeStack currentStack, Dictionary<string, Stack<Primitives>> runtimePins)
     {
         if (currentStack.Count is 0)
         {
@@ -44,7 +44,7 @@ internal record Branching(Token Token, List<IProgramPiece>? YesBranch, List<IPro
         {
             foreach (var piece in NoBranch!)
             {
-                piece.TypeCheck(currentStack);
+                piece.TypeCheck(currentStack, runtimePins);
             }
             var (diff, msg) = currentStack.Diff(cloneStack);
             if (diff is not TypeStackDiff.Equal)
@@ -56,7 +56,7 @@ internal record Branching(Token Token, List<IProgramPiece>? YesBranch, List<IPro
         {
             foreach (var piece in YesBranch)
             {
-                piece.TypeCheck(currentStack);
+                piece.TypeCheck(currentStack, runtimePins);
             }
             var (diff, msg) = currentStack.Diff(cloneStack);
             if (diff is not TypeStackDiff.Equal)
@@ -69,11 +69,11 @@ internal record Branching(Token Token, List<IProgramPiece>? YesBranch, List<IPro
             var otherCurrentStack = new TypeStack(currentStack);
             foreach (var piece in YesBranch)
             {
-                piece.TypeCheck(currentStack);
+                piece.TypeCheck(currentStack, runtimePins);
             }
             foreach (var piece in NoBranch)
             {
-                piece.TypeCheck(otherCurrentStack);
+                piece.TypeCheck(otherCurrentStack, runtimePins);
             }
             var (diff, msg) = currentStack.Diff(otherCurrentStack);
             if (diff is not TypeStackDiff.Equal)

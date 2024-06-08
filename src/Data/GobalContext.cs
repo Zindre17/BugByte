@@ -10,26 +10,22 @@ internal record GlobalContext(
 {
     public GlobalContext() : this([], [], []) { }
 
-    public Dictionary<string, Stack<PinnedStackItem>> PinnedStackItems { get; } = [];
+    public Dictionary<string, Stack<PinnedStackItemType>> PinnedStackItems { get; } = [];
 
     public Dictionary<string, int> Memory { get; } = [];
 
     private int pinnedStackItemsCount = 0;
 
-    public PinnedStackItem PinStackItem(Token token, int count)
+    public PinnedStackItemType PinStackItem(Token token, TypingType typing)
     {
-        if (PinnedStackItems.TryGetValue(token.Word.Value, out var stack))
+        if (!PinnedStackItems.TryGetValue(token.Word.Value, out var stack))
         {
-            stack.Push(new(token, count, pinnedStackItemsCount));
-        }
-        else
-        {
-            stack = new Stack<PinnedStackItem>();
-            stack.Push(new(token, count, pinnedStackItemsCount));
+            stack = new Stack<PinnedStackItemType>();
             PinnedStackItems.Add(token.Word.Value, stack);
         }
 
-        pinnedStackItemsCount += count;
+        stack.Push(PinnedStackItem.Create(token, typing, pinnedStackItemsCount));
+        pinnedStackItemsCount += typing.Decompose().Length;
         return stack.Peek();
     }
 
@@ -44,7 +40,7 @@ internal record GlobalContext(
                 PinnedStackItems.Remove(name);
             }
 
-            pinnedStackItemsCount -= item.ItemCount;
+            pinnedStackItemsCount -= item.Typing.Decompose().Length;
         }
         else
         {
@@ -60,8 +56,8 @@ internal record GlobalContext(
         }
     }
 
-    internal void AddMemory(string name, int size)
+    internal void AddMemory(MemoryAllocationType memoryAllocationType)
     {
-        Memory.TryAdd(name, size);
+        Memory.TryAdd(memoryAllocationType.GetAssemblyLabel(), memoryAllocationType.GetSize());
     }
 }

@@ -16,7 +16,7 @@ internal record Context
 
     public string Name { get; set; } = "";
 
-    public Dictionary<string, Token> Memory { get; } = [];
+    public Dictionary<string, MemoryAllocationType> Memory { get; } = [];
     private Dictionary<string, FunctionMeta> Functions { get; } = [];
     private Dictionary<string, Constant> Constants { get; } = [];
     private Dictionary<string, Structure> Structures { get; } = [];
@@ -84,20 +84,15 @@ internal record Context
         }
     }
 
-    private string GenerateMemoryLabel(string label)
+    internal MemoryAllocationType AddMemory(Token label, TypingType typing, int count)
     {
-        return $"{Name.Replace('-', '_')}_{label.Replace('-', '_')}";
-    }
-
-    internal string AddMemory(Token label)
-    {
-        if (Memory.TryGetValue(label.Word.Value, out var token))
+        if (Memory.TryGetValue(label.Word.Value, out var memoryAllocation))
         {
-            if (token != label)
+            if (memoryAllocation.Token != label)
             {
-                throw new Exception($"Duplicate memory label {label} and {token}.");
+                throw new Exception($"Duplicate memory label {label} and {memoryAllocation.Token}.");
             }
-            return GenerateMemoryLabel(label.Word.Value);
+            return memoryAllocation;
         }
 
         if (IsReserved(label.Word.Value))
@@ -105,22 +100,23 @@ internal record Context
             throw new Exception($"Cannot use reserved keyword {label} as a memory label.");
         }
 
-        Memory.TryAdd(label.Word.Value, label);
-        return GenerateMemoryLabel(label.Word.Value);
+        memoryAllocation = MemoryAllocation.Create(this, label, typing, count);
+        Memory.TryAdd(label.Word.Value, memoryAllocation);
+        return memoryAllocation;
     }
 
-    internal bool TryGetMemory(Token label, out string memory)
+    internal bool TryGetMemory(string name, out MemoryAllocationType memory)
     {
-        if (Memory.ContainsKey(label.Word.Value))
+        if (Memory.TryGetValue(name, out MemoryAllocationType? value))
         {
-            memory = GenerateMemoryLabel(label.Word.Value);
+            memory = value;
             return true;
         }
         else if (Parent is not null)
         {
-            return Parent.TryGetMemory(label, out memory);
+            return Parent.TryGetMemory(name, out memory);
         }
-        memory = "";
+        memory = MemoryAllocation.None;
         return false;
     }
 
@@ -174,3 +170,22 @@ internal record Context
         return false;
     }
 }
+
+internal record MemoryAllocationType(Token Token, TypingType Typing, string AssemblyLabel, int Count);
+
+internal static class MemoryAllocation
+{
+    public static MemoryAllocationType None => new(Token.OnlyValue(string.Empty), Typing.Create(Primitives.Unknown), string.Empty, 0);
+
+    public static MemoryAllocationType Create(Context context, Token label, TypingType typing, int count) => new(label, typing, GenerateMemoryLabel(context.Name, label.Word.Value), count);
+
+    public static string GetAssemblyLabel(this MemoryAllocationType memory) => memory.AssemblyLabel;
+    public static int GetSize(this MemoryAllocationType memory) => memory.Typing.GetSize() * memory.Count;
+
+
+    private static string GenerateMemoryLabel(string contextName, string memoryLabel)
+    {
+        return $"{contextName.Replace('-', '_')}_{memoryLabel.Replace('-', '_')}";
+    }
+}
+
