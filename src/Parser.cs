@@ -474,7 +474,7 @@ internal static class Parser
             else if (context.TryGetMemory(token.Word.Value, out var memoryAllocation))
             {
                 OffsetType offset = Offset.Create(0);
-                if (tokens.Count > 3 && tokens.Peek().Word.Value is "[")
+                if (tokens.Count >= 3 && tokens.Peek().Word.Value is "[")
                 {
                     if (memoryAllocation.Count is 1)
                     {
@@ -487,7 +487,15 @@ internal static class Parser
                     {
                         throw new Exception($"Expected number after {bracketToken}, but got {indexToken}");
                     }
-                    offset = Offset.Create(index * memoryAllocation.Typing.GetSize());
+                    if (tokens.Count >= 2 && tokens.Peek().Word.Value.StartsWith('.'))
+                    {
+                        var fieldNameToken = tokens.Dequeue();
+                        offset = Offset.Create(index * memoryAllocation.Typing.GetSize() + memoryAllocation.Typing.GetOffsetOf(fieldNameToken.Word.Value[1..]).GetValue());
+                    }
+                    else
+                    {
+                        offset = Offset.Create(index * memoryAllocation.Typing.GetSize());
+                    }
                 }
                 programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation.GetAssemblyLabel(), offset));
             }
