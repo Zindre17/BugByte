@@ -32,12 +32,7 @@ words(str) ptr int:
     bump(ptr): dup load 1 + swap store ;
     get-length-since-last-space(int) int: lastword load - ;
     get-start-position-of-next-word() ptr: location lastword load + ;
-    get-next-size-position() ptr: counter load 16 * words-array + ;
-    get-next-word-start-position() ptr: counter load 16 * 8 + words-array + ;
-    store-word(str):
-        get-next-word-start-position store
-        get-next-size-position store
-    ;
+    store-word(str): counter load words-array[] store ;
 ;
 
 trim-start(int size ptr location) str:

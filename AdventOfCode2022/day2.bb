@@ -31,10 +31,7 @@ using line-count:
     "part2: " prints sum2 load print
 ;
 
-get-line(int line-nr) str:
-    line-nr 16 * lines + load
-    line-nr 16 * 8 + lines + load as ptr
-;
+get-line(int) str: lines[] load ;
 
 add-to-sum(int): sum load + sum store ;
 add-to-sum2(int): sum2 load + sum2 store ;

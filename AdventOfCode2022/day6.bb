@@ -14,10 +14,9 @@ int[14] longWindow
 # drop drop
 using streamSize streamStart:
     # init window
-    readNext 0 window bufferPosition store
-    readNext 1 window bufferPosition store
-    readNext 2 window bufferPosition store
-    readNext 3 window bufferPosition store
+    shortSize repeat i : 
+        readNext i window[] store
+    ;
 
     window while it shortSize hasDuplicates: 
         shiftWindowLeft
@@ -34,20 +33,9 @@ using streamSize streamStart:
     # Part 2
     0 cursor store
     
-    readNext 0  longWindow bufferPosition store
-    readNext 1  longWindow bufferPosition store
-    readNext 2  longWindow bufferPosition store
-    readNext 3  longWindow bufferPosition store
-    readNext 4  longWindow bufferPosition store
-    readNext 5  longWindow bufferPosition store
-    readNext 6  longWindow bufferPosition store
-    readNext 7  longWindow bufferPosition store
-    readNext 8  longWindow bufferPosition store
-    readNext 9  longWindow bufferPosition store
-    readNext 10 longWindow bufferPosition store
-    readNext 11 longWindow bufferPosition store
-    readNext 12 longWindow bufferPosition store
-    readNext 13 longWindow bufferPosition store
+    longSize repeat i :
+        readNext i longWindow[] store
+    ;
     
     longWindow while it longSize hasDuplicates: 
         shiftLongWindowLeft
@@ -88,8 +76,6 @@ shiftItemLeft(ptr int):
     load
     swap 8 - store
 ;
-
-bufferPosition(int ptr) ptr: swap 8 * + ;
 
 hasDuplicates(ptr int) bool: 
     int sum

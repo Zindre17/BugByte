@@ -62,11 +62,7 @@ set-new-number-three(int):
 
 add-to-current(int) : current load + current store ;
 
-get-line-size(int) int: 16 * lines + load ;
-get-line-start(int) ptr: 16 * lines + 8 + load as ptr ;
-get-line(int line-nr) str: 
-    line-nr get-line-size
-    line-nr get-line-start
-;
+get-line-size(int) int: lines[].length load ;
+get-line(int) str: lines[] load ;
 
 is-line-empty(int) bool: get-line-size 0 = ;

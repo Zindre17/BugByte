@@ -165,7 +165,4 @@ is-crate-number-line(ptr)int: 1 + load-byte 0"1" load-byte = ;
 
 bump(int)int: 1 + ;
 
-get-line(int line-nr) str:
-    line-nr 16 *     lines + load
-    line-nr 16 * 8 + lines + load as ptr
-;
+get-line(int) str: lines[] load ;
