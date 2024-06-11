@@ -140,6 +140,36 @@ internal static class Instructions
         });
     }
 
+    internal static Instruction LoadTyped(Token token, TypingType type)
+    {
+        var primitives = type.ToPrimitives();
+        var assembly = new[]{
+            $";-- load typed --",
+            $"  pop rbx",
+        };
+        assembly = [..assembly, ..Enumerable.Range(0, primitives.Length).SelectMany(i =>
+         new[]{
+            $"  mov rax, [rbx + {i*8}]",
+            $"  push rax",
+        })];
+        return new(token, assembly, (stack, runtimePins) =>
+        {
+            if (stack.Count is 0)
+            {
+                throw new Exception("Stack is empty.");
+            }
+            var (top, _) = stack.Pop();
+            if (!top.IsPointer())
+            {
+                throw new Exception($"Expected pointer on the stack, but got {top} ({token})");
+            }
+            foreach (var typing in type.Decompose())
+            {
+                stack.Push((typing, token));
+            }
+        });
+    }
+
     internal static Instruction LoadByte(Token token)
     {
         var assembly = new[]{
@@ -266,7 +296,7 @@ internal static class Instructions
 
     internal static Instruction PushMemoryPointer(Token token, MemoryAllocationType allocation, int index)
     {
-        var offset = index * 8;
+        var offset = index * allocation.Typing.GetSize();
         var assembly = new[]{
             ";-- push memory pointer --",
             $"  mov rax, {allocation.GetAssemblyLabel()} + {offset}",
@@ -278,7 +308,7 @@ internal static class Instructions
     internal static Instruction PushMemoryPointer(Token token, MemoryAllocationType allocation, int index, string fieldName)
     {
         var field = allocation.Typing.GetField(fieldName);
-        var offset = index * 8 + field.Offset;
+        var offset = index * allocation.Typing.GetSize() + field.Offset;
         var assembly = new[]{
             ";-- push memory pointer --",
             $"  mov rax, {allocation.GetAssemblyLabel()} + {offset}",
@@ -342,6 +372,40 @@ internal static class Instructions
             if (!top.IsPointer())
             {
                 throw new Exception($"Expected pointer on the stack, but got {top} {token}");
+            }
+        });
+    }
+
+    internal static Instruction StoreTyped(Token token, TypingType typing)
+    {
+        var primitives = typing.ToPrimitives();
+        var assembly = new[]{
+            $";-- store typed --",
+            $"  pop rbx",
+        };
+        assembly = [..assembly, ..Enumerable.Range(0, primitives.Length).Reverse().SelectMany(i =>
+         new[]{
+            $"  pop rax",
+            $"  mov [rbx + {i*8}], rax",
+        })];
+        return new(token, assembly, (stack, runtimePins) =>
+        {
+            if (stack.Count < primitives.Length + 1)
+            {
+                throw new Exception($"Not enough stack items to store this type. {stack.Count} vs {primitives.Length + 1}");
+            }
+            var (top, _) = stack.Pop();
+            if (!top.IsPointer())
+            {
+                throw new Exception($"Expected pointer on the stack, but got {top} ({token})");
+            }
+            foreach (var type in typing.Decompose().Reverse())
+            {
+                var (next, _) = stack.Pop();
+                if (next != type && !(next.IsPointer() && type.IsPointer()))
+                {
+                    throw new Exception($"Type mismatch: {next} != {type} ({token})");
+                }
             }
         });
     }

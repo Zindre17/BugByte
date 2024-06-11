@@ -499,10 +499,34 @@ internal static class Parser
                         var fieldName = fieldNameToken.Word.Value[1..];
                         programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index, fieldName));
                     }
+                    else if (tokens.Count > 0 && tokens.Peek().Word.Value is Tokens.Keyword.Load)
+                    {
+                        tokens.Dequeue();
+                        programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index));
+                        programPieces.Add(Instructions.LoadTyped(token, memoryAllocation.Typing));
+                    }
+                    else if (tokens.Count > 0 && tokens.Peek().Word.Value is Tokens.Keyword.Store)
+                    {
+                        tokens.Dequeue();
+                        programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index));
+                        programPieces.Add(Instructions.StoreTyped(token, memoryAllocation.Typing));
+                    }
                     else
                     {
                         programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index));
                     }
+                }
+                else if (tokens.Count > 0 && tokens.Peek().Word.Value is Tokens.Keyword.Load)
+                {
+                    tokens.Dequeue();
+                    programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, 0));
+                    programPieces.Add(Instructions.LoadTyped(token, memoryAllocation.Typing));
+                }
+                else if (tokens.Count > 0 && tokens.Peek().Word.Value is Tokens.Keyword.Store)
+                {
+                    tokens.Dequeue();
+                    programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, 0));
+                    programPieces.Add(Instructions.StoreTyped(token, memoryAllocation.Typing));
                 }
                 else
                 {
@@ -1062,22 +1086,15 @@ internal static class Typing
         }
     }
 
-    internal static TypingType[] Decompose(this IEnumerable<TypingType> types)
+    internal static TypingType[] Decompose(this TypingType type) => type switch
     {
-        var decomposed = new List<TypingType>();
-        foreach (var type in types)
-        {
-            if (type is ComplexType complex)
-            {
-                decomposed.AddRange(complex.Structure.Fields.Values.Select(f => Create(f.Type)));
-            }
-            else
-            {
-                decomposed.Add(type);
-            }
-        }
-        return [.. decomposed];
-    }
+        ComplexType complex => complex.Structure.Fields.Values.Select(f => Create(f.Type)).ToArray(),
+        PrimitiveType primitive => [primitive],
+        PointerType pointer => [pointer],
+        _ => throw new Exception("Unknown type."),
+    };
+
+    internal static TypingType[] Decompose(this IEnumerable<TypingType> types) => [.. types.SelectMany(Decompose)];
 
     internal static Primitives[] ToPrimitives(this TypingType type) => type switch
     {
