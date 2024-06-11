@@ -294,27 +294,44 @@ internal static class Instructions
         return new(token, assembly, Contract.Consumer(Primitives.Number, Primitives.Pointer));
     }
 
-    internal static Instruction PushMemoryPointer(Token token, MemoryAllocationType allocation, int index)
+    internal static Instruction PushMemoryPointer(Token token, MemoryAllocationType allocation, int index, bool isDynamic)
     {
         var offset = index * allocation.Typing.GetSize();
-        var assembly = new[]{
+        var assembly = isDynamic ? new[]{
             ";-- push memory pointer --",
+            $"  pop rbx",
+            $"  mov rax, {allocation.Typing.GetSize()}",
+            $"  mul rbx",
+            $"  add rax, {allocation.GetAssemblyLabel()}",
+            $"  push rax",
+        } : new[]{
             $"  mov rax, {allocation.GetAssemblyLabel()} + {offset}",
             $"  push rax",
         };
-        return new(token, assembly, Contract.Producer(Typing.CreatePointer(allocation.Typing)));
+        var contract = isDynamic ? new Contract([Typing.Create(Primitives.Number)], [Typing.CreatePointer(allocation.Typing)])
+            : Contract.Producer(Typing.CreatePointer(allocation.Typing));
+        return new(token, assembly, contract);
     }
 
-    internal static Instruction PushMemoryPointer(Token token, MemoryAllocationType allocation, int index, string fieldName)
+    internal static Instruction PushMemoryPointer(Token token, MemoryAllocationType allocation, int index, string fieldName, bool isDynamic)
     {
         var field = allocation.Typing.GetField(fieldName);
         var offset = index * allocation.Typing.GetSize() + field.Offset;
-        var assembly = new[]{
+        var assembly = isDynamic ? new[]{
             ";-- push memory pointer --",
+            $"  pop rbx",
+            $"  mov rax, {allocation.Typing.GetSize()}",
+            $"  mul rbx",
+            $"  add rax, {field.Offset}",
+            $"  add rax, {allocation.GetAssemblyLabel()}",
+            $"  push rax",
+        } : new[]{
             $"  mov rax, {allocation.GetAssemblyLabel()} + {offset}",
             $"  push rax",
         };
-        return new(token, assembly, Contract.Producer(Typing.CreatePointer(Typing.Create(field.Type))));
+        var contract = isDynamic ? new Contract([Typing.Create(Primitives.Number)], [Typing.CreatePointer(Typing.Create(field.Type))])
+            : Contract.Producer(Typing.CreatePointer(Typing.Create(field.Type)));
+        return new(token, assembly, contract);
     }
 
     internal static Instruction PushFieldOfPinnedStackItem(PinnedStackItemType item, string fieldName)

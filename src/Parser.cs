@@ -482,10 +482,19 @@ internal static class Parser
                     }
                     var bracketToken = tokens.Dequeue();
                     var indexToken = tokens.Dequeue();
-                    tokens.Dequeue();
-                    if (!int.TryParse(indexToken.Word.Value, out var index))
+                    var isDynamicIndex = false;
+                    var index = 0;
+                    if (indexToken.Word.Value is "]")
                     {
-                        throw new Exception($"Expected number after {bracketToken}, but got {indexToken}");
+                        isDynamicIndex = true;
+                    }
+                    else
+                    {
+                        if (!int.TryParse(indexToken.Word.Value, out index))
+                        {
+                            throw new Exception($"Expected number after {bracketToken}, but got {indexToken}");
+                        }
+                        tokens.Dequeue(); // Consume the closing bracket
                     }
 
                     if (index >= memoryAllocation.Count)
@@ -497,40 +506,40 @@ internal static class Parser
                     {
                         var fieldNameToken = tokens.Dequeue();
                         var fieldName = fieldNameToken.Word.Value[1..];
-                        programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index, fieldName));
+                        programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index, fieldName, isDynamicIndex));
                     }
                     else if (tokens.Count > 0 && tokens.Peek().Word.Value is Tokens.Keyword.Load)
                     {
                         tokens.Dequeue();
-                        programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index));
+                        programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index, isDynamicIndex));
                         programPieces.Add(Instructions.LoadTyped(token, memoryAllocation.Typing));
                     }
                     else if (tokens.Count > 0 && tokens.Peek().Word.Value is Tokens.Keyword.Store)
                     {
                         tokens.Dequeue();
-                        programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index));
+                        programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index, isDynamicIndex));
                         programPieces.Add(Instructions.StoreTyped(token, memoryAllocation.Typing));
                     }
                     else
                     {
-                        programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index));
+                        programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index, isDynamicIndex));
                     }
                 }
                 else if (tokens.Count > 0 && tokens.Peek().Word.Value is Tokens.Keyword.Load)
                 {
                     tokens.Dequeue();
-                    programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, 0));
+                    programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, 0, false));
                     programPieces.Add(Instructions.LoadTyped(token, memoryAllocation.Typing));
                 }
                 else if (tokens.Count > 0 && tokens.Peek().Word.Value is Tokens.Keyword.Store)
                 {
                     tokens.Dequeue();
-                    programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, 0));
+                    programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, 0, false));
                     programPieces.Add(Instructions.StoreTyped(token, memoryAllocation.Typing));
                 }
                 else
                 {
-                    programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, 0));
+                    programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, 0, false));
                 }
             }
             else if (token.Word.Value.Contains('.'))
@@ -553,7 +562,7 @@ internal static class Parser
                 }
                 else if (context.TryGetMemory(name, out var memory))
                 {
-                    programPieces.Add(Instructions.PushMemoryPointer(token, memory, 0, fieldName));
+                    programPieces.Add(Instructions.PushMemoryPointer(token, memory, 0, fieldName, false));
                     continue;
                 }
                 else if (meta.PinnedStackItems.TryGetValue(name, out var pinnedItem))
