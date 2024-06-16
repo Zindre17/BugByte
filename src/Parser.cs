@@ -7,7 +7,7 @@ internal static class Parser
     private static int stringLiteralCounter = 0;
     private static int nullTerminatedStringLiteralCounter = 0;
     internal static Context MetaEvaluate(
-        IEnumerable<Token> tokens,
+        SourceCode code,
         GlobalContext meta,
         Context outerContext,
         string? terminatingString,
@@ -20,13 +20,11 @@ internal static class Parser
 
         var nestedLevel = 0;
 
-        var tokenQueue = new Queue<Token>(tokens);
-
         var innerContext = new Context(outerContext);
 
-        while (tokenQueue.Count > 0 && (tokenQueue.Peek().Word.Value != terminatingString || nestedLevel > 0))
+        while (code.HasNextToken() && (code.PeekNextToken().Word.Value != terminatingString || nestedLevel > 0))
         {
-            var token = tokenQueue.Dequeue();
+            var token = code.MoveNext();
 
             if (token.Word.Value is ":")
             {
@@ -40,27 +38,27 @@ internal static class Parser
             }
             else if (token.Word.Value is Tokens.Keyword.Include)
             {
-                var fileRootContext = ParseInclude(token, tokenQueue, meta);
+                var fileRootContext = ParseInclude(code, meta);
                 innerContext.Merge(fileRootContext);
             }
             else if (token.Word.Value is Tokens.Keyword.Struct)
             {
-                innerContext.AddStructure(ParseStructure(token, tokenQueue, innerContext));
+                innerContext.AddStructure(ParseStructure(code, innerContext));
             }
             else if (token.Word.Value is Tokens.Keyword.ConstantDefinition)
             {
-                innerContext.AddConstant(ParseConstant(token, tokenQueue, innerContext, meta));
+                innerContext.AddConstant(ParseConstant(code, innerContext, meta));
             }
-            else if (tokenQueue.Count > 0 && tokenQueue.Peek().Word.Value is "(")
+            else if (code.HasNextToken() && code.PeekNextToken().Word.Value is "(")
             {
                 var functionName = token.Word.Value;
-                tokenQueue.Dequeue();
+                code.MoveNext();
                 if (innerContext.IsReserved(functionName))
                 {
                     throw new Exception($"Cannot use reserved keyword {token} as a function name.");
                 }
 
-                var arguments = ParseParameters(innerContext, tokenQueue, ")");
+                var arguments = ParseParameters(innerContext, code, ")");
                 List<ParameterType> inputPins = [];
                 if (arguments.All(Parameter.IsNamed))
                 {
@@ -70,28 +68,28 @@ internal static class Parser
                 {
                     throw new Exception($"Expected either all anonymous parameters or all named parameters for function input, but got mix in {token}");
                 }
-                var argumentsEndToken = tokenQueue.Dequeue();
+                var argumentsEndToken = code.MoveNext();
                 if (argumentsEndToken.Word.Value is not ")")
                 {
                     throw new Exception($"Expected `)` after function arguments, but got {argumentsEndToken}.");
                 }
 
-                var output = ParseParameters(innerContext, tokenQueue, ":");
+                var output = ParseParameters(innerContext, code, ":");
                 if (output.Any(Parameter.IsNamed))
                 {
                     throw new Exception($"Expected anonymous parameters for function output, but got named parameters.");
                 }
-                var outputEndToken = tokenQueue.Dequeue();
+                var outputEndToken = code.MoveNext();
                 if (outputEndToken.Word.Value is not ":")
                 {
                     throw new Exception($"Expected `:` after function output, but got {outputEndToken}.");
                 }
 
                 var contract = new Contract([.. arguments.Select(a => a.Typing)], [.. output.Select(o => o.Typing)]);
-                var functionContext = MetaEvaluate(tokenQueue, meta, innerContext, ";", out var innerRemaining, out var remaining);
+                var functionContext = MetaEvaluate(code, meta, innerContext, ";", out var innerRemaining, out var remaining);
                 functionContext.Name = functionName;
-                tokenQueue = (Queue<Token>)remaining;
-                var endToken = tokenQueue.Dequeue();
+                code = new(remaining);
+                var endToken = code.MoveNext();
                 if (endToken.Word.Value is not ";")
                 {
                     throw new Exception($"Expected `;` after function, but got {endToken}.");
@@ -104,9 +102,9 @@ internal static class Parser
                 ((Queue<Token>)innerRemainingTokens).Enqueue(token);
             }
         }
-        foreach (var rem in tokenQueue)
+        while (code.HasNextToken())
         {
-            ((Queue<Token>)remainingTokens).Enqueue(rem);
+            ((Queue<Token>)remainingTokens).Enqueue(code.MoveNext());
         }
         return innerContext;
     }
@@ -777,32 +775,32 @@ internal static class Parser
         return new(token, yesBranch, noBranch);
     }
 
-    private static List<ParameterType> ParseParameters(Context context, Queue<Token> tokens, string? terminationToken = null)
+    private static List<ParameterType> ParseParameters(Context context, SourceCode code, string? terminationToken = null)
     {
-        if (tokens.Count is 0)
+        if (!code.HasNextToken())
         {
-            throw new Exception($"Expected contract, but got nothing.");
+            throw new Exception($"Expected contract, but got nothing @ {code.CurrentToken()}");
         }
 
         var parameters = new List<ParameterType>();
 
-        while (tokens.Count > 0 && tokens.Peek().Word.Value != terminationToken)
+        while (code.HasNextToken() && code.PeekNextToken().Word.Value != terminationToken)
         {
-            var token = tokens.Dequeue();
+            var token = code.MoveNext();
             if (!TryParseTyping(context, token, out var typing))
             {
                 throw new Exception($"Expected type, but got {token}.");
             }
 
-            if (tokens.Count is 0
-            || TryParseTyping(context, tokens.Peek(), out _)
-            || tokens.Peek().Word.Value == terminationToken)
+            if (!code.HasNextToken()
+            || TryParseTyping(context, code.PeekNextToken(), out _)
+            || code.PeekNextToken().Word.Value == terminationToken)
             {
                 parameters.Add(Parameter.Create(typing));
                 continue;
             }
 
-            var nameToken = tokens.Dequeue();
+            var nameToken = code.MoveNext();
 
             if (context.IsReserved(nameToken.Word.Value))
             {
@@ -826,13 +824,14 @@ internal static class Parser
         return typing is not null;
     }
 
-    private static Context ParseInclude(Token token, Queue<Token> tokens, GlobalContext meta)
+    private static Context ParseInclude(SourceCode code, GlobalContext meta)
     {
-        if (tokens.Count is 0)
+        var token = code.CurrentToken();
+        if (!code.HasNextToken())
         {
             throw new Exception($"Expected path after include, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
         }
-        var includePath = tokens.Dequeue();
+        var includePath = code.MoveNext();
         if (includePath.Word is not StringLiteralWord stringLiteralWord)
         {
             throw new Exception($"Expected path after include, but got {includePath}");
@@ -849,18 +848,18 @@ internal static class Parser
         return MetaEvaluate(words, meta, new(), null, out _, out _);
     }
 
-    private static Constant ParseConstant(Token token, Queue<Token> tokens, Context context, GlobalContext meta)
+    private static Constant ParseConstant(SourceCode code, Context context, GlobalContext meta)
     {
-        if (tokens.Count < 2)
+        if (!code.HasRemainingTokens(2))
         {
-            throw new Exception($"Expected at least two tokens after `aka`, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            throw new Exception($"Expected at least two tokens after `aka`, but got nothing @ {code.CurrentToken()}");
         }
-        var nameToken = tokens.Dequeue();
+        var nameToken = code.MoveNext();
         if (context.IsReserved(nameToken.Word.Value))
         {
-            throw new Exception($"Expected identifier, but got an existing keyword {nameToken.Word}.");
+            throw new Exception($"Expected identifier, but got an existing keyword {nameToken}.");
         }
-        var constant = tokens.Dequeue();
+        var constant = code.MoveNext();
         if (int.TryParse(constant.Word.Value, out var constInt))
         {
             return new(nameToken, ConstantTypes.Number, Number: constInt);
@@ -881,9 +880,9 @@ internal static class Parser
         }
     }
 
-    private static Structure ParseStructure(Token token, Queue<Token> tokens, Context context)
+    private static Structure ParseStructure(SourceCode code, Context context)
     {
-        var structName = tokens.Dequeue();
+        var structName = code.MoveNext();
         var fields = new Dictionary<string, StructureField>();
 
         if (context.IsReserved(structName.Word.Value))
@@ -891,22 +890,27 @@ internal static class Parser
             throw new Exception($"Expected identifier, but got an existing keyword {structName}.");
         }
 
-        if (tokens.Count is 0)
+        if (!code.HasNextToken())
         {
-            throw new Exception($"Expected block, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            throw new Exception($"Expected `:`, but got nothing @ {structName}");
         }
-        tokens.Dequeue();
+
+        var blockStart = code.MoveNext();
+        if (blockStart.Word.Value is not ":")
+        {
+            throw new Exception($"Expected `:`, but got {blockStart}");
+        }
 
         var offset = 0;
-        while (tokens.Count > 0)
+        while (code.HasNextToken())
         {
-            var member = tokens.Dequeue();
+            var member = code.MoveNext();
             if (member.Word.Value is ";")
             {
                 break;
             }
 
-            var sizeToken = tokens.Dequeue();
+            var sizeToken = code.MoveNext();
             if (sizeToken.Word.Value is ";")
             {
                 break;
@@ -926,17 +930,17 @@ internal static class Parser
                 throw new Exception($"Expected integer, but got {sizeToken}.");
             }
 
-            if (tokens.Count is 0)
+            if (!code.HasNextToken())
             {
-                throw new Exception($"Expected identifier, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+                throw new Exception($"Expected identifier, but got nothing after {sizeToken}");
             }
 
             fields.Add(member.Word.Value, new(offset, size, type, member.Word.Value));
             offset += size;
 
-            if (tokens.Count is 0)
+            if (!code.HasNextToken())
             {
-                throw new Exception($"Unclosed struct definition @ {token.Filename}:{token.Line}:{token.Column}");
+                throw new Exception($"Unclosed struct definition @ {structName}");
             }
         }
         return new Structure(structName, fields);

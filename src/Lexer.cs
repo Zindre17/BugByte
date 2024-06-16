@@ -2,7 +2,7 @@ namespace BugByte;
 
 internal static class Lexer
 {
-    internal static Queue<Token> LexFile(string filename)
+    internal static SourceCode LexFile(string filename)
     {
         var lines = File.ReadAllLines(filename);
         var words = new Queue<Token>();
@@ -22,7 +22,7 @@ internal static class Lexer
             }
             lineNr++;
         }
-        return words;
+        return new(words);
     }
 }
 
