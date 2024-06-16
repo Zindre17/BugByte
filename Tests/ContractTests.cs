@@ -13,22 +13,22 @@ public class ContractTests
 
         Assert.AreEqual(0, r.In.Length);
         Assert.AreEqual(2, r.Out.Length);
-        Assert.AreEqual(Primitives.Number, r.Out[0]);
-        Assert.AreEqual(Primitives.Pointer, r.Out[1]);
+        Assert.AreEqual(Typing.Create(Primitives.Number), r.Out[0]);
+        Assert.AreEqual(Typing.Create(Primitives.Pointer), r.Out[1]);
     }
 
     [TestMethod]
     public void JoinInto_Empty()
     {
         var a = new Contract([Primitives.Number], [Primitives.Number]);
-        var b = new Contract();
+        var b = new Contract(Array.Empty<Primitives>(), []);
 
         var r = a.JoinInto(b);
 
         Assert.AreEqual(1, r.In.Length);
         Assert.AreEqual(1, r.Out.Length);
-        Assert.AreEqual(Primitives.Number, r.In[0]);
-        Assert.AreEqual(Primitives.Number, r.Out[0]);
+        Assert.AreEqual(Typing.Create(Primitives.Number), r.In[0]);
+        Assert.AreEqual(Typing.Create(Primitives.Number), r.Out[0]);
     }
 
     [TestMethod]
@@ -40,10 +40,10 @@ public class ContractTests
         var r = a.JoinInto(b);
 
         Assert.AreEqual(2, r.In.Length);
-        Assert.AreEqual(Primitives.Number, r.In[0]);
-        Assert.AreEqual(Primitives.Pointer, r.In[1]);
+        Assert.AreEqual(Typing.Create(Primitives.Number), r.In[0]);
+        Assert.AreEqual(Typing.Create(Primitives.Pointer), r.In[1]);
         Assert.AreEqual(1, r.Out.Length);
-        Assert.AreEqual(Primitives.Pointer, r.Out[0]);
+        Assert.AreEqual(Typing.Create(Primitives.Pointer), r.Out[0]);
     }
 
     [TestMethod]
@@ -55,12 +55,12 @@ public class ContractTests
         var r = a.JoinInto(b);
 
         Assert.AreEqual(4, r.In.Length);
-        Assert.AreEqual(Primitives.Number, r.In[0]);
-        Assert.AreEqual(Primitives.Pointer, r.In[1]);
-        Assert.AreEqual(Primitives.Number, r.In[2]);
-        Assert.AreEqual(Primitives.Pointer, r.In[3]);
+        Assert.AreEqual(Typing.Create(Primitives.Number), r.In[0]);
+        Assert.AreEqual(Typing.Create(Primitives.Pointer), r.In[1]);
+        Assert.AreEqual(Typing.Create(Primitives.Number), r.In[2]);
+        Assert.AreEqual(Typing.Create(Primitives.Pointer), r.In[3]);
         Assert.AreEqual(1, r.Out.Length);
-        Assert.AreEqual(Primitives.Pointer, r.Out[0]);
+        Assert.AreEqual(Typing.Create(Primitives.Pointer), r.Out[0]);
     }
 
     [TestMethod]
@@ -72,12 +72,12 @@ public class ContractTests
         var r = a.JoinInto(b);
 
         Assert.AreEqual(1, r.In.Length);
-        Assert.AreEqual(Primitives.Pointer, r.In[0]);
+        Assert.AreEqual(Typing.Create(Primitives.Pointer), r.In[0]);
         Assert.AreEqual(4, r.Out.Length);
-        Assert.AreEqual(Primitives.Pointer, r.Out[0]);
-        Assert.AreEqual(Primitives.Number, r.Out[1]);
-        Assert.AreEqual(Primitives.Pointer, r.Out[2]);
-        Assert.AreEqual(Primitives.Pointer, r.Out[3]);
+        Assert.AreEqual(Typing.Create(Primitives.Pointer), r.Out[0]);
+        Assert.AreEqual(Typing.Create(Primitives.Number), r.Out[1]);
+        Assert.AreEqual(Typing.Create(Primitives.Pointer), r.Out[2]);
+        Assert.AreEqual(Typing.Create(Primitives.Pointer), r.Out[3]);
     }
 
     [TestMethod]
