@@ -109,18 +109,18 @@ internal static class Parser
         return innerContext;
     }
 
-    public static List<IProgramPiece> ParseProgram(Queue<Token> tokens, GlobalContext meta, Context context, string? terminationToken = null)
+    public static List<IProgramPiece> ParseProgram(SourceCode code, GlobalContext meta, Context context, string? terminationToken = null)
     {
-        if (tokens.Count is 0)
+        if (!code.HasNextToken())
         {
             throw new Exception($"Expected tokens, but got nothing.");
         }
 
         var programPieces = new List<IProgramPiece>();
 
-        while (tokens.Count > 0 && tokens.Peek().Word.Value != terminationToken)
+        while (code.HasNextToken() && code.PeekNextToken().Word.Value != terminationToken)
         {
-            var token = tokens.Dequeue();
+            var token = code.MoveNext();
             if (int.TryParse(token.Word.Value, out var number))
             {
                 programPieces.Add(Instructions.Literal.Number(token, number));
@@ -160,7 +160,7 @@ internal static class Parser
 
                 pinnedInputItems.ForEach(item => funcProgram.Add(Instructions.PinStackItem(item)));
 
-                funcProgram.AddRange(ParseProgram(new Queue<Token>(func.Body), meta, func.Context, ";"));
+                funcProgram.AddRange(ParseProgram(new(func.Body), meta, func.Context, ";"));
 
 
                 var parsedFunc = new Function(token, func.Contract, func.InputPins.Count is not 0, funcProgram);
@@ -287,11 +287,11 @@ internal static class Parser
             }
             else if (token.Word.Value is Tokens.Keyword.Branch)
             {
-                programPieces.Add(ParseBranches(token, tokens, meta, context));
+                programPieces.Add(ParseBranches(code, meta, context));
             }
             else if (token.Word.Value is Tokens.Keyword.Loop)
             {
-                programPieces.Add(ParseLoop(token, tokens, meta, context));
+                programPieces.Add(ParseLoop(code, meta, context));
             }
             else if (token.Word.Value is Tokens.Keyword.Syscall0)
             {
@@ -323,70 +323,70 @@ internal static class Parser
             }
             else if (Tokens.Primitive.TryParsePrimitive(token.Word.Value, out var dataType))
             {
-                ParseTypedAllocation(tokens, meta, context, token, Typing.Create(dataType));
+                ParseTypedAllocation(code, meta, context, token, Typing.Create(dataType));
             }
             else if (context.TryGetStructure(token.Word.Value, out var structure))
             {
-                ParseTypedAllocation(tokens, meta, context, token, Typing.Create(structure));
+                ParseTypedAllocation(code, meta, context, token, Typing.Create(structure));
             }
             else if (token.Word.Value is Tokens.Keyword.Allocate)
             {
-                if (tokens.Count is 0)
+                if (!code.HasNextToken())
                 {
                     throw new Exception($"Expected `[` after {token}, but got nothing.");
                 }
-                var expectedBracket = tokens.Dequeue();
+                var expectedBracket = code.MoveNext();
                 if (expectedBracket.Word.Value is not "[")
                 {
                     throw new Exception($"Expected `[` after {token}, but got {expectedBracket}");
                 }
 
-                if (tokens.Count is 0)
+                if (!code.HasNextToken())
                 {
                     throw new Exception($"Expected size or struct after {expectedBracket}, but got nothing.");
                 }
 
-                var sizeToken = tokens.Dequeue();
+                var sizeToken = code.MoveNext();
                 if (!int.TryParse(sizeToken.Word.Value, out var size))
                 {
                     throw new Exception($"Expected size or struct after {expectedBracket}, but got {sizeToken}");
                 }
 
-                if (tokens.Count is 0)
+                if (!code.HasNextToken())
                 {
                     throw new Exception($"Expected `]` after {sizeToken}, but got nothing.");
                 }
-                expectedBracket = tokens.Dequeue();
+                expectedBracket = code.MoveNext();
                 if (expectedBracket.Word.Value is not "]")
                 {
                     throw new Exception($"Expected `]` after {sizeToken}, but got {expectedBracket}");
                 }
 
-                if (tokens.Count is 0)
+                if (!code.HasNextToken())
                 {
                     throw new Exception($"Expected label for memory after {expectedBracket}, but got nothing.");
                 }
-                var label = tokens.Dequeue();
+                var label = code.MoveNext();
                 var memoryAllocation = context.AddMemory(label, Typing.Create(Primitives.Number), size);
                 meta.AddMemory(memoryAllocation);
             }
             else if (token.Word.Value is Tokens.Keyword.Repeat)
             {
-                if (tokens.Count is 0)
+                if (!code.HasNextToken())
                 {
                     throw new Exception($"Expected iterator label or `:` after {token}, but got nothing.");
                 }
-                var next = tokens.Dequeue();
+                var next = code.MoveNext();
                 PinnedStackItemType iteration;
                 if (next.Word.Value is not ":")
                 {
                     iteration = meta.PinStackItem(next, Typing.Create(Primitives.Number));
 
-                    if (tokens.Count is 0)
+                    if (!code.HasNextToken())
                     {
                         throw new Exception($"Expected `:` after {next}, but got nothing.");
                     }
-                    tokens.Dequeue();
+                    code.MoveNext();
                 }
                 else
                 {
@@ -395,15 +395,15 @@ internal static class Parser
                 // Iterator starts at 0
                 programPieces.Add(Instructions.Literal.Number(token, 0));
 
-                var repeatProgram = ParseProgram(tokens, meta, context, ";");
+                var repeatProgram = ParseProgram(code, meta, context, ";");
                 repeatProgram.Add(Instructions.PushPinnedStackItem(iteration));
                 repeatProgram.Add(Instructions.Literal.Number(token, 1));
                 repeatProgram.Add(Instructions.Operations.Add(token));
-                if (tokens.Count is 0)
+                if (!code.HasNextToken())
                 {
                     throw new Exception($"Unclosed repeat block.");
                 }
-                var finalToken = tokens.Dequeue();
+                var finalToken = code.MoveNext();
                 if (finalToken.Word.Value is not ";")
                 {
                     throw new Exception($"Expected `;` after {token}, but got {finalToken}");
@@ -434,9 +434,9 @@ internal static class Parser
             {
                 var pins = new List<PinnedStackItemType>();
                 var toBePinned = new Stack<Token>();
-                while (tokens.Count > 0)
+                while (code.HasNextToken())
                 {
-                    var pinToken = tokens.Dequeue();
+                    var pinToken = code.MoveNext();
                     if (pinToken.Word.Value is ":")
                     {
                         break;
@@ -453,12 +453,12 @@ internal static class Parser
                     programPieces.Add(Instructions.PinStackItem(pinnedStackItem));
                     pins.Add(pinnedStackItem);
                 }
-                var program = ParseProgram(tokens, meta, context, ";");
-                if (tokens.Count is 0)
+                var program = ParseProgram(code, meta, context, ";");
+                if (!code.HasNextToken())
                 {
                     throw new Exception($"Unclosed using block.");
                 }
-                var finalToken = tokens.Dequeue();
+                var finalToken = code.MoveNext();
                 if (finalToken.Word.Value is not ";")
                 {
                     throw new Exception($"Expected `;` after {token}, but got {finalToken}");
@@ -472,14 +472,14 @@ internal static class Parser
             else if (context.TryGetMemory(token.Word.Value, out var memoryAllocation))
             {
                 OffsetType offset = Offset.Create(0);
-                if (tokens.Count >= 3 && tokens.Peek().Word.Value is "[")
+                if (code.HasRemainingTokens(3) && code.PeekNextToken().Word.Value is "[")
                 {
                     if (memoryAllocation.Count is 1)
                     {
                         throw new Exception($"Cannot index into memory allocation {memoryAllocation.GetAssemblyLabel()} because it is not an array.");
                     }
-                    var bracketToken = tokens.Dequeue();
-                    var indexToken = tokens.Dequeue();
+                    var bracketToken = code.MoveNext();
+                    var indexToken = code.MoveNext();
                     var isDynamicIndex = false;
                     var index = 0;
                     if (indexToken.Word.Value is "]")
@@ -492,7 +492,7 @@ internal static class Parser
                         {
                             throw new Exception($"Expected number after {bracketToken}, but got {indexToken}");
                         }
-                        tokens.Dequeue(); // Consume the closing bracket
+                        code.MoveNext(); // Consume the closing bracket
                     }
 
                     if (index >= memoryAllocation.Count)
@@ -500,21 +500,21 @@ internal static class Parser
                         throw new Exception($"Index {index} is out of bounds for memory allocation {memoryAllocation.GetAssemblyLabel()}.");
                     }
 
-                    if (tokens.Count >= 2 && tokens.Peek().Word.Value.StartsWith('.'))
+                    if (code.HasRemainingTokens(2) && code.PeekNextToken().Word.Value.StartsWith('.'))
                     {
-                        var fieldNameToken = tokens.Dequeue();
+                        var fieldNameToken = code.MoveNext();
                         var fieldName = fieldNameToken.Word.Value[1..];
                         programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index, fieldName, isDynamicIndex));
                     }
-                    else if (tokens.Count > 0 && tokens.Peek().Word.Value is Tokens.Keyword.Load)
+                    else if (code.HasNextToken() && code.PeekNextToken().Word.Value is Tokens.Keyword.Load)
                     {
-                        tokens.Dequeue();
+                        code.MoveNext();
                         programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index, isDynamicIndex));
                         programPieces.Add(Instructions.LoadTyped(token, memoryAllocation.Typing));
                     }
-                    else if (tokens.Count > 0 && tokens.Peek().Word.Value is Tokens.Keyword.Store)
+                    else if (code.HasNextToken() && code.PeekNextToken().Word.Value is Tokens.Keyword.Store)
                     {
-                        tokens.Dequeue();
+                        code.MoveNext();
                         programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index, isDynamicIndex));
                         programPieces.Add(Instructions.StoreTyped(token, memoryAllocation.Typing));
                     }
@@ -523,15 +523,15 @@ internal static class Parser
                         programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, index, isDynamicIndex));
                     }
                 }
-                else if (tokens.Count > 0 && tokens.Peek().Word.Value is Tokens.Keyword.Load)
+                else if (code.HasNextToken() && code.PeekNextToken().Word.Value is Tokens.Keyword.Load)
                 {
-                    tokens.Dequeue();
+                    code.MoveNext();
                     programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, 0, false));
                     programPieces.Add(Instructions.LoadTyped(token, memoryAllocation.Typing));
                 }
-                else if (tokens.Count > 0 && tokens.Peek().Word.Value is Tokens.Keyword.Store)
+                else if (code.HasNextToken() && code.PeekNextToken().Word.Value is Tokens.Keyword.Store)
                 {
-                    tokens.Dequeue();
+                    code.MoveNext();
                     programPieces.Add(Instructions.PushMemoryPointer(token, memoryAllocation, 0, false));
                     programPieces.Add(Instructions.StoreTyped(token, memoryAllocation.Typing));
                 }
@@ -597,11 +597,11 @@ internal static class Parser
             }
             else if (token.Word.Value is Tokens.Keyword.Cast)
             {
-                if (tokens.Count is 0)
+                if (!code.HasNextToken())
                 {
                     throw new Exception($"Expected type after {token}, but got nothing.");
                 }
-                var typeToken = tokens.Dequeue();
+                var typeToken = code.MoveNext();
                 if (typeToken.Word.Value is not Tokens.Primitive.Number and not Tokens.Primitive.Pointer)
                 {
                     throw new Exception($"Expected type after {token}, but got {typeToken}.");
@@ -624,44 +624,45 @@ internal static class Parser
         return programPieces;
     }
 
-    private static void ParseTypedAllocation(Queue<Token> tokens, GlobalContext meta, Context context, Token token, TypingType typing)
+    private static void ParseTypedAllocation(SourceCode code, GlobalContext meta, Context context, Token token, TypingType typing)
     {
-        if (tokens.Count is 0)
+        if (!code.HasNextToken())
         {
             throw new Exception($"Expected identifier after {token}, but got nothing.");
         }
 
-        var next = tokens.Dequeue();
+        var next = code.MoveNext();
         var identifier = next;
         var count = 1;
         if (next.Word.Value is "[")
         {
-            var countToken = tokens.Dequeue();
-            if (tokens.Count is 0)
+            var countToken = code.MoveNext();
+            if (!code.HasNextToken())
             {
                 throw new Exception($"Expected count after {countToken}, but got nothing.");
             }
             count = int.Parse(countToken.Word.Value);
-            if (tokens.Count is 0)
+            if (!code.HasNextToken())
             {
                 throw new Exception($"Expected `]` after {countToken}, but got nothing.");
             }
-            tokens.Dequeue();
+            code.MoveNext();
 
-            identifier = tokens.Dequeue();
+            identifier = code.MoveNext();
         }
         var memoryLabel = context.AddMemory(identifier, typing, count);
 
         meta.AddMemory(memoryLabel);
     }
 
-    private static Loop ParseLoop(Token token, Queue<Token> tokens, GlobalContext meta, Context context)
+    private static Loop ParseLoop(SourceCode code, GlobalContext meta, Context context)
     {
-        if (tokens.Count is 0)
+        var token = code.CurrentToken();
+        if (!code.HasNextToken())
         {
-            throw new Exception($"Expected loop condition, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            throw new Exception($"Expected loop condition, but got nothing @ {token}");
         }
-        var iteratorLabel = tokens.Dequeue();
+        var iteratorLabel = code.MoveNext();
         if (context.IsReserved(iteratorLabel.Word.Value))
         {
             throw new Exception($"Cannot use reserved keyword {iteratorLabel} as a loop iterator.");
@@ -669,18 +670,18 @@ internal static class Parser
 
         var iterator = meta.PinStackItem(iteratorLabel, Typing.Create(Primitives.Runtime));
 
-        if (tokens.Count is 0)
+        if (!code.HasNextToken())
         {
-            throw new Exception($"Expected condition after loop iterator, but got nothing @ {token.Filename}:{token.Line}:{token.Column}");
+            throw new Exception($"Expected condition after loop iterator, but got nothing @ {iteratorLabel}");
         }
-        var condition = ParseProgram(tokens, meta, context, ":");
-        var endToken = tokens.Dequeue();
+        var condition = ParseProgram(code, meta, context, ":");
+        var endToken = code.MoveNext();
         if (endToken.Word.Value is not ":")
         {
             throw new Exception($"Expected `:` after loop condition, but got {endToken}");
         }
-        var body = ParseProgram(tokens, meta, context, ";");
-        var endBodyToken = tokens.Dequeue();
+        var body = ParseProgram(code, meta, context, ";");
+        var endBodyToken = code.MoveNext();
         if (endBodyToken.Word.Value is not ";")
         {
             throw new Exception($"Expected `;` after loop body, but got {endBodyToken}");
@@ -691,31 +692,31 @@ internal static class Parser
     }
 
 
-    private static Branching ParseBranches(Token token, Queue<Token> tokens, GlobalContext meta, Context context, string? modifier = null)
+    private static Branching ParseBranches(SourceCode code, GlobalContext meta, Context context, string? modifier = null)
     {
         List<IProgramPiece>? yesBranch = null;
         List<IProgramPiece>? noBranch = null;
-
-        if (tokens.Count is 0)
+        var token = code.CurrentToken();
+        if (!code.HasNextToken())
         {
             throw new Exception($"Expected yes: or no: after {token}, but got nothing.");
         }
-        var firstBranch1Token = tokens.Dequeue();
+        var firstBranch1Token = code.MoveNext();
         if (firstBranch1Token.Word.Value is not "yes" and not "no")
         {
             throw new Exception($"Expected `yes:` or `no:` after ?, but got {firstBranch1Token}");
         }
-        if (tokens.Count is 0)
+        if (!code.HasNextToken())
         {
             throw new Exception($"Expected `:` after {firstBranch1Token}, but got nothing.");
         }
-        var firstBranchBlockStartToken = tokens.Dequeue();
+        var firstBranchBlockStartToken = code.MoveNext();
         if (firstBranchBlockStartToken.Word.Value is not ":")
         {
             throw new Exception($"Expected `:` after {firstBranch1Token}, but got {firstBranchBlockStartToken}");
         }
-        var branch1Program = ParseProgram(tokens, meta, context, ";");
-        var branchEndToken = tokens.Dequeue();
+        var branch1Program = ParseProgram(code, meta, context, ";");
+        var branchEndToken = code.MoveNext();
         if (branchEndToken.Word.Value is not ";")
         {
             throw new Exception($"Expected `;` after {firstBranch1Token}, but got {branchEndToken}");
@@ -732,32 +733,16 @@ internal static class Parser
 
         var expectedBranch2Token = firstBranch1Token.Word.Value is "yes" ? "no" : "yes";
 
-        if (tokens.Count < 3 || tokens.Peek().Word.Value != expectedBranch2Token)
+        if (!code.HasRemainingTokens(3) || code.PeekNextToken().Word.Value != expectedBranch2Token || code.PeekNthToken(2).Word.Value is not ":")
         {
             return new(token, yesBranch, noBranch);
         }
 
-        var firstBranch2Token = tokens.Dequeue();
+        var firstBranch2Token = code.MoveNext();
+        code.MoveNext(); // :
 
-        if (tokens.Peek().Word.Value is not ":")
-        {
-            // TODO: clean this shit up
-            var newTokens = new Queue<Token>();
-            newTokens.Enqueue(firstBranch2Token);
-            while (tokens.Count > 0)
-            {
-                newTokens.Enqueue(tokens.Dequeue());
-            }
-            while (newTokens.Count > 0)
-            {
-                tokens.Enqueue(newTokens.Dequeue());
-            }
-
-            return new(token, yesBranch, noBranch);
-        }
-        tokens.Dequeue();
-        var branch2Program = ParseProgram(tokens, meta, context, ";");
-        var endBranch2Token = tokens.Dequeue();
+        var branch2Program = ParseProgram(code, meta, context, ";");
+        var endBranch2Token = code.MoveNext();
         if (endBranch2Token.Word.Value is not ";")
         {
             throw new Exception($"Expected `;` after {firstBranch2Token}, but got {endBranch2Token}");

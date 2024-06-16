@@ -171,13 +171,45 @@ public class SourceCodeTests
     }
 
     [TestMethod]
-    public void HasRemainingTokens_NonEmptySourceCode_ExactAmountOfTokensAfterSkipNextToken()
+    public void PeekNthToken_NonEmptySourceCode_GettingCorrctToken()
+    {
+        var SourceCode = new SourceCode([firstToken, secondToken, thirdToken]);
+
+        Assert.AreEqual(secondToken, SourceCode.PeekNthToken(2));
+    }
+
+    [TestMethod]
+    public void PeekNthToken_NonEmptySourceCode_GettingCorrctTokenAfterMoveNext()
     {
         var SourceCode = new SourceCode([firstToken, secondToken, thirdToken]);
 
         SourceCode.MoveNext();
 
-        Assert.IsTrue(SourceCode.HasRemainingTokens(2));
+        Assert.AreEqual(thirdToken, SourceCode.PeekNthToken(2));
+    }
+
+    [TestMethod]
+    public void PeekNthToken_NonEmptySourceCode_NotEnoughTokens_ThrowsException()
+    {
+        var SourceCode = new SourceCode([firstToken, secondToken, thirdToken]);
+
+        Assert.ThrowsException<EndOfCodeException>(() => SourceCode.PeekNthToken(4));
+    }
+
+    [TestMethod]
+    public void PeekNthToken_NonEmptySourceCode_ExactAmountOfTokens()
+    {
+        var SourceCode = new SourceCode([firstToken, secondToken, thirdToken]);
+
+        Assert.AreEqual(thirdToken, SourceCode.PeekNthToken(3));
+    }
+
+    [TestMethod]
+    public void PeekNthToken_EmptySourceCode_ThrowsException()
+    {
+        var SourceCode = new SourceCode([]);
+
+        Assert.ThrowsException<EndOfCodeException>(() => SourceCode.PeekNthToken(1));
     }
 }
 

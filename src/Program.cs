@@ -30,7 +30,7 @@ var words = LexFile(fileName);
 
 var meta = new GlobalContext();
 var context = MetaEvaluate(words, meta, new(), null, out var remainingWords, out _);
-var program = ParseProgram((Queue<Token>)remainingWords, meta, context);
+var program = ParseProgram(new(remainingWords), meta, context);
 var typeStack = new TypeStack();
 var runtimePins = new Dictionary<string, Stack<Primitives>>();
 foreach (var item in program)
