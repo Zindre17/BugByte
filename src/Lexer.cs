@@ -2,9 +2,10 @@ namespace BugByte;
 
 internal static class Lexer
 {
-    internal static SourceCode LexFile(string filename)
+    internal static SourceCode LexFile(string filename) => LexString(File.ReadAllLines(filename));
+
+    internal static SourceCode LexString(string[] lines, string? filename = null)
     {
-        var lines = File.ReadAllLines(filename);
         var words = new Queue<Token>();
         var lineNr = 1;
         foreach (var line in lines)
@@ -17,7 +18,7 @@ internal static class Lexer
                 {
                     break;
                 }
-                words.Enqueue(new(filename, nextWord, lineNr, lineSegment.Offset));
+                words.Enqueue(new(filename ?? string.Empty, nextWord, lineNr, lineSegment.Offset));
                 lineSegment = lineSegment.Without(nextWord.Value);
             }
             lineNr++;
@@ -35,6 +36,8 @@ internal record Token(string Filename, IWord Word, int Line, int Column)
 
 public static class Tokens
 {
+    public const string BlockStart = ":";
+    public const string BlockEnd = ";";
     public static bool IsReserved(string token)
     {
         if (IsReserved(typeof(Primitive), token))
@@ -116,6 +119,8 @@ public static class Tokens
 
         public const string ShiftLeft = "<<";
         public const string ShiftRight = ">>";
+        public const string FunctionParametersStart = "(";
+        public const string FunctionParametersEnd = ")";
     }
 
     public static class Keyword

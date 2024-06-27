@@ -211,5 +211,17 @@ public class SourceCodeTests
 
         Assert.ThrowsException<EndOfCodeException>(() => SourceCode.PeekNthToken(1));
     }
+
+    [TestMethod]
+    public void GetTokensUntil_NonEmptySourceCode_ExpectedStates()
+    {
+        var sourceCode = new SourceCode([firstToken, secondToken, thirdToken]);
+
+        var result = sourceCode.GetCodeUntil(secondToken.Word.Value);
+
+        Assert.AreEqual(sourceCode.CurrentToken(), secondToken);
+        Assert.AreEqual(firstToken, result.MoveNext());
+        Assert.ThrowsException<EndOfCodeException>(result.MoveNext);
+    }
 }
 

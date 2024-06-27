@@ -8,12 +8,51 @@ internal class SourceCode
     public SourceCode(Token[] tokens) => this.tokens = tokens;
     public SourceCode(IEnumerable<Token> tokens) => this.tokens = tokens.ToArray();
 
-    public bool HasNextToken() => HasRemainingTokens(1);
-    public Token MoveNext() => HasNextToken() ? tokens[currentPosition++] : throw new EndOfCodeException();
-    public Token PeekNextToken() => PeekNthToken(1);
-    public Token PeekNthToken(int count) => HasRemainingTokens(count) ? tokens[currentPosition + count - 1] : throw new EndOfCodeException();
+    public bool HasNextToken()
+        => HasRemainingTokens(1);
 
-    internal Token CurrentToken() => currentPosition is 0 ? throw new NoCurrentTokenYetException() : tokens[currentPosition - 1];
+    public Token MoveNext()
+        => HasNextToken() ? tokens[currentPosition++]
+        : throw new EndOfCodeException();
+
+    public Token PeekNextToken()
+        => PeekNthToken(1);
+
+    public Token PeekNthToken(int count)
+        => HasRemainingTokens(count) ? tokens[CurrentIndex + count]
+        : throw new EndOfCodeException();
+
+    internal Token CurrentToken()
+        => HasEnumerationStarted() ? tokens[CurrentIndex]
+        : throw new NoCurrentTokenYetException();
+
+    internal SourceCode GetCodeUntil(string tokenValue)
+        => GetCodeUntil(token => token.Word.Value == tokenValue);
+
+    internal SourceCode GetCodeUntilAny(params string[] tokenValues)
+        => GetCodeUntil(token => tokenValues.Contains(token.Word.Value));
+
+    internal SourceCode GetCodeUntil(Func<Token, bool> predicate)
+    {
+        var startIndex = NextIndex;
+        bool predicateSucceded = false;
+        while (HasNextToken())
+        {
+            var token = MoveNext();
+            if (predicate(token))
+            {
+                predicateSucceded = true;
+                break;
+            }
+        }
+
+        if (!predicateSucceded)
+        {
+            throw new Exception("Search did not terminate before end of code.");
+        }
+
+        return new(tokens[startIndex..CurrentIndex]);
+    }
 
     internal bool HasRemainingTokens(int count)
     {
@@ -22,16 +61,26 @@ internal class SourceCode
             throw new ArgumentOutOfRangeException(nameof(count), "Count must be greater than 0");
         }
 
-        return currentPosition + (count - 1) < tokens.Length;
+        return CurrentIndex + count < tokens.Length;
     }
+
+    private int CurrentIndex => currentPosition - 1;
+    private int NextIndex => currentPosition;
+    private bool HasEnumerationStarted() => currentPosition > 0;
 }
 
-internal class EndOfCodeException : Exception
+internal class SourceCodeBuilder
 {
-    public EndOfCodeException() : base("End of file reached") { }
+    private readonly List<Token> tokens = [];
+
+    public void Add(Token token) => tokens.Add(token);
+    public SourceCode Build() => new(tokens);
 }
 
-internal class NoCurrentTokenYetException : Exception
+internal class EndOfCodeException() : Exception("End of file reached")
 {
-    public NoCurrentTokenYetException() : base("No token in focus yet") { }
+}
+
+internal class NoCurrentTokenYetException() : Exception("No token in focus yet")
+{
 }
