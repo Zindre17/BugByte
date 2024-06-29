@@ -29,7 +29,7 @@ internal static class Lexer
 
 internal record Token(string Filename, IWord Word, int Line, int Column)
 {
-    public static Token OnlyValue(string value) => new("", new Word(value), 0, 0);
+    public static Token OnlyValue(string value) => new("", LineSegment.From(value).FindNextWord(), 0, 0);
 
     public override string ToString() => $"`{Word}` @ {Filename}:{Line}:{Column}";
 };
