@@ -2,7 +2,7 @@ namespace BugByte;
 
 internal static class Lexer
 {
-    internal static SourceCode LexFile(string filename) => LexString(File.ReadAllLines(filename));
+    internal static SourceCode LexFile(string filename) => LexString(File.ReadAllLines(filename), filename);
 
     internal static SourceCode LexString(string[] lines, string? filename = null)
     {
