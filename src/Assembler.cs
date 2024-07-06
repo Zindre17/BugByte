@@ -1,6 +1,13 @@
 namespace BugByte;
 
-public class Assembler
+internal interface IAssemblyContext
+{
+    void AddExecution(params string[] assembly);
+    void AddMemory(MemoryAllocationType allocation);
+    void AddString(string label, string value);
+}
+
+internal class Assembler : IAssemblyContext
 {
     public Assembler()
     {
@@ -53,12 +60,14 @@ public class Assembler
     }
 
     public List<string> Assembly { get; init; }
+    private readonly HashSet<string> strings = [];
+    private readonly Dictionary<string, int> memories = [];
 
-    internal void Assemble(IEnumerable<IProgramPiece> programPieces, GlobalContext meta)
+    internal void Assemble(IEnumerable<IProgramPiece> programPieces)
     {
         foreach (var programPiece in programPieces)
         {
-            Add(programPiece.Assemble());
+            programPiece.Assemble(this);
         }
 
         // Exit
@@ -66,36 +75,34 @@ public class Assembler
         Assembly.Add("  mov rdi, 0");
         Assembly.Add("  syscall");
 
-        AddMeta(meta);
-    }
-
-    public void Add(string[] assembly)
-    {
-        Assembly.AddRange(assembly);
-    }
-
-    private const int TempStackCapacity = 1024;
-
-    internal void AddMeta(GlobalContext meta)
-    {
         Assembly.Add("segment readable");
-        foreach (var literal in meta.StringLiterals.Values)
-        {
-            Assembly.Add(ToAssemblyDataString($"s{literal.Index}", literal.Value));
-        }
-        foreach (var literal in meta.NullTerminatedStringLiterals.Values)
-        {
-            Assembly.Add(ToAssemblyDataString($"ns{literal.Index}", literal.Value + "\0"));
-        }
+        Assembly.AddRange(strings);
 
         Assembly.Add("segment readable writeable");
         Assembly.Add($"temp_stack: rq {TempStackCapacity}");
 
-        foreach (var (name, size) in meta.Memory)
+        foreach (var (name, size) in memories)
         {
             Assembly.Add($"{name}: rb {size}");
         }
     }
+
+    public void AddExecution(string[] assembly)
+    {
+        Assembly.AddRange(assembly);
+    }
+
+    public void AddString(string label, string value)
+    {
+        strings.Add(ToAssemblyDataString(label, value));
+    }
+
+    public void AddMemory(MemoryAllocationType allocation)
+    {
+        memories[allocation.GetAssemblyLabel()] = allocation.GetSize();
+    }
+
+    private const int TempStackCapacity = 1024;
 
     private static string ToAssemblyDataString(string label, string value)
     {

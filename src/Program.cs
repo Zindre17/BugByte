@@ -28,9 +28,9 @@ Directory.SetCurrentDirectory(directory);
 
 var words = LexFile(fileName);
 
-var meta = new GlobalContext();
-var context = MetaEvaluate(words, meta, new(), null, out var remainingWords, out _);
-var program = ParseProgram(new(remainingWords), meta, context);
+var definitions = PreProcessor.Process(words, "main");
+var program = ParseProgram(definitions.RemainingCode, definitions.Definitions);
+
 var typeStack = new TypeStack();
 var runtimePins = new Dictionary<string, Stack<Primitives>>();
 foreach (var item in program)
@@ -39,11 +39,11 @@ foreach (var item in program)
 }
 if (typeStack.Count > 0)
 {
-    throw new Exception($"The program must have an empty stack at the end. Got {typeStack.Count} items on the stack.");
+    throw new Exception($"The program must have an empty stack at the end. Got {typeStack} items on the stack.");
 }
 
 var assembler = new Assembler();
-assembler.Assemble(program, meta);
+assembler.Assemble(program);
 
 Directory.CreateDirectory("./output");
 File.WriteAllLines($"./output/{fileName.Split(".")[0]}.asm", assembler.Assembly);

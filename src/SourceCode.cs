@@ -66,7 +66,8 @@ internal class SourceCode
 
     private int CurrentIndex => currentPosition - 1;
     private int NextIndex => currentPosition;
-    private bool HasEnumerationStarted() => currentPosition > 0;
+    public bool HasEnumerationStarted() => currentPosition > 0;
+    public void Reset() => currentPosition = 0;
 }
 
 internal class SourceCodeBuilder

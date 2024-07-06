@@ -1,35 +1,31 @@
 namespace BugByte;
 
-internal record Loop(Token Token, PinnedStackItemType Iterator, List<IProgramPiece> Condition, List<IProgramPiece> Body) : IProgramPiece
+internal record Loop(Token Token, IPinnedStackItem Iterator, List<IProgramPiece> Condition, List<IProgramPiece> Body) : IProgramPiece
 {
     private static string StartLabel => $"ls_{Guid.NewGuid():N}";
     private static string EndLabel => $"le_{Guid.NewGuid():N}";
 
-    public string[] Assemble()
+    public void Assemble(IAssemblyContext context)
     {
-        var assembly = new List<string>();
-
         var startLabel = StartLabel;
         var endLabel = EndLabel;
 
-        assembly.AddRange(Instructions.PinStackItem(Iterator).Assemble());
+        Instructions.PinStackItem(Iterator).Assemble(context);
 
-        assembly.Add($"{startLabel}:");
+        context.AddExecution($"{startLabel}:");
 
-        assembly.AddRange(Instructions.PushPinnedStackItem(Iterator).Assemble());
-        assembly.AddRange(Condition.SelectMany(i => i.Assemble()));
-        assembly.AddRange(Instructions.JumpIfZero(Token, endLabel).Assemble());
+        Instructions.PushPinnedStackItem(Iterator).Assemble(context);
+        Condition.ForEach(i => i.Assemble(context));
+        Instructions.JumpIfZero(Token, endLabel).Assemble(context);
 
-        assembly.AddRange(Body.SelectMany(i => i.Assemble()));
-        assembly.AddRange(Instructions.UpdatePinnedStackElement(Iterator).Assemble());
-        assembly.AddRange(Instructions.Jump(Token, startLabel).Assemble());
+        Body.ForEach(i => i.Assemble(context));
+        Instructions.UpdatePinnedStackElement(Iterator).Assemble(context);
+        Instructions.Jump(Token, startLabel).Assemble(context);
 
-        assembly.Add($"{endLabel}:");
+        context.AddExecution($"{endLabel}:");
 
-        assembly.AddRange(Instructions.PushPinnedStackItem(Iterator).Assemble());
-        assembly.AddRange(Instructions.UnpinStackItem(Iterator).Assemble());
-
-        return [.. assembly];
+        Instructions.PushPinnedStackItem(Iterator).Assemble(context);
+        Instructions.UnpinStackItem(Iterator).Assemble(context);
     }
 
     public void TypeCheck(TypeStack currentStack, Dictionary<string, Stack<Primitives>> runtimePins)

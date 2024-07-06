@@ -1,10 +1,10 @@
 namespace BugByte;
 
-internal record FunctionMeta(Token Name, List<Token> Body, Contract Contract, List<ParameterType> InputPins, Context Context);
+internal record FunctionMeta(Token Name, SourceCode Body, Contract Contract, List<ParameterType> InputPins);
 
-internal record Function(Token Token, Contract Contract, bool AutoUsings, List<IProgramPiece> Body) : IProgramPiece
+internal record Function(Token Token, Contract Contract, bool AutoUsings, List<IProgramPiece> Body) : IProgramPiece, IDefinition
 {
-    public string[] Assemble() => Body.SelectMany(i => i.Assemble()).ToArray();
+    public void Assemble(IAssemblyContext context) => Body.ForEach(i => i.Assemble(context));
 
     private bool MatchesContract(Dictionary<string, Stack<Primitives>> runtimePins)
     {

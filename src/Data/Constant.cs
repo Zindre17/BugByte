@@ -7,7 +7,7 @@ internal enum ConstantTypes
     ZeroTerminatedString,
 }
 
-internal record Constant(Token Token, ConstantTypes Type, long? Number = null, string? Text = null, bool? Bool = null) : IAssemblable, ITypeCheckable
+internal record Constant(Token Token, ConstantTypes Type, long? Number = null, string? Text = null, bool? Bool = null) : IProgramPiece, IDefinition
 {
     public Contract Contract => Type switch
     {
@@ -17,7 +17,7 @@ internal record Constant(Token Token, ConstantTypes Type, long? Number = null, s
         _ => throw new NotImplementedException(),
     };
     public string Name => Token.Word.Value;
-    public string[] Assemble() => throw new NotImplementedException();
+    public void Assemble(IAssemblyContext context) => throw new NotImplementedException();
 
     public void TypeCheck(TypeStack currentStack, Dictionary<string, Stack<Primitives>> runtimePins) => Contract.TypeCheck(Token, currentStack);
 }

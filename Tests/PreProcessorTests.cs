@@ -3,11 +3,13 @@ namespace Tests;
 [TestClass]
 public class PreProcessorTests
 {
+    private const string testScope = "test";
+
     [TestMethod]
     public void Process_EmptyCode_ReturnsEmptyDefinitions()
     {
         var code = new SourceCode([]);
-        var result = PreProcessor.Process(code);
+        var result = PreProcessor.Process(code, testScope);
         Assert.AreEqual(0, result.Definitions.Count);
         Assert.IsFalse(result.RemainingCode.HasNextToken());
     }
@@ -15,42 +17,42 @@ public class PreProcessorTests
     [TestMethod]
     public void Process_StructDefinition_ReturnsStructDefinition()
     {
-        var (remainingCode, definition) = PreProcessor.Process(Lexer.LexString(structDefinitonString));
-        var structDefinition = definition.Get("point");
+        var (remainingCode, definition) = PreProcessor.Process(Lexer.LexString(structDefinitonString), testScope);
+        definition.TryGetStructure("point", out var structDefinition);
 
         Assert.AreEqual(1, definition.Count);
-        AssertDefinition("point", 4, structDefinition);
+        AssertStructure("point", 2, structDefinition);
         Assert.IsFalse(remainingCode.HasNextToken());
     }
 
     [TestMethod]
     public void Process_ConstantDefinitions_ReturnsConstantDefinitions()
     {
-        var (remainingCode, definition) = PreProcessor.Process(Lexer.LexString(constantDefinitionString));
-        var fourConstant = definition.Get("four");
-        var promptConstant = definition.Get("prompt");
+        var (remainingCode, definition) = PreProcessor.Process(Lexer.LexString(constantDefinitionString), testScope);
+        definition.TryGetConstant("four", out var fourConstant);
+        definition.TryGetConstant("prompt", out var promptConstant);
 
         Assert.AreEqual(2, definition.Count);
-        AssertDefinition("four", 1, fourConstant);
-        AssertDefinition("prompt", 1, promptConstant);
+        AssertConstant("four", Typing.Create(Primitives.Number), fourConstant);
+        AssertConstant("prompt", Typing.Create(Structure.String), promptConstant);
         Assert.IsFalse(remainingCode.HasNextToken());
     }
 
     [TestMethod]
     public void Process_FunctionDefinition_ReturnsFunctionDefinition()
     {
-        var (remainingCode, definition) = PreProcessor.Process(Lexer.LexString(functionDefinitionString));
-        var functionDefinition = definition.Get("add");
+        var (remainingCode, definition) = PreProcessor.Process(Lexer.LexString(functionDefinitionString), testScope);
+        definition.TryGetFunction("add", out var functionDefinition);
 
         Assert.AreEqual(1, definition.Count);
-        AssertDefinition("add", 1, functionDefinition);
+        AssertFunction("add", new Contract([Primitives.Number, Primitives.Number], [Primitives.Number]), false, functionDefinition);
         Assert.IsFalse(remainingCode.HasNextToken());
     }
 
     [TestMethod]
     public void Process_ProgramWithRemainingCode_ReturnsRemainigCode()
     {
-        var (remainingCode, _) = PreProcessor.Process(Lexer.LexString([.. functionDefinitionString, " 1 2 add "]));
+        var (remainingCode, _) = PreProcessor.Process(Lexer.LexString([.. functionDefinitionString, " 1 2 add "]), testScope);
 
         Assert.IsTrue(remainingCode.HasNextToken());
         Assert.AreEqual("1", remainingCode.MoveNext().Word.Value);
@@ -58,11 +60,27 @@ public class PreProcessorTests
         Assert.AreEqual("add", remainingCode.MoveNext().Word.Value);
     }
 
-    private static void AssertDefinition(string expectedName, int expectedCodeLength, IDefinition definition)
+    private static void AssertFunction(string expectedName, Contract expectedContract, bool expectedAutoUsing, IIdentifiedDefinition<Function> definition)
     {
-        Assert.AreEqual(expectedName, definition.Name.Word.Value);
-        Assert.IsTrue(definition.Code.HasRemainingTokens(expectedCodeLength));
-        Assert.IsFalse(definition.Code.HasRemainingTokens(expectedCodeLength + 1));
+        var function = definition.Parse(new(testScope));
+
+        Assert.AreEqual(expectedName, function.Token.Word.Value);
+        Assert.AreEqual(expectedContract, function.Contract);
+        Assert.AreEqual(expectedAutoUsing, function.AutoUsings);
+    }
+
+    private static void AssertStructure(string expectedName, int expectedFieldCount, IIdentifiedDefinition<Structure> definition)
+    {
+        Assert.AreEqual(expectedName, definition.Token.Word.Value);
+        var structure = definition.Parse(new(testScope));
+        Assert.AreEqual(expectedFieldCount, structure.Fields.Count);
+    }
+
+    private static void AssertConstant(string expectedName, TypingType expectedType, IIdentifiedDefinition<Constant> definition)
+    {
+        Assert.AreEqual(expectedName, definition.Token.Word.Value);
+        var constant = definition.Parse(new(testScope));
+        Assert.AreEqual(Contract.Producer(expectedType), constant.Contract);
     }
 
     private static readonly string[] structDefinitonString = [

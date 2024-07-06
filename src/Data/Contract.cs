@@ -68,4 +68,26 @@ internal record Contract(TypingType[] In, TypingType[] Out)
             return new Contract([.. _in], [.. prevOuts.Reverse(), .. next.Out]);
         }
     }
+
+    public virtual bool Equals(Contract? other)
+    {
+        if (other is null)
+        {
+            return false;
+        }
+        if (ReferenceEquals(this, other))
+        {
+            return true;
+        }
+        var ins = In.Decompose();
+        var otherIns = other.In.Decompose();
+        var outs = Out.Decompose();
+        var otherOuts = other.Out.Decompose();
+        if (ins.Length != otherIns.Length || outs.Length != otherOuts.Length)
+        {
+            return false;
+        }
+        return Enumerable.Range(0, ins.Length).All(i => ins[i] == otherIns[i])
+            && Enumerable.Range(0, outs.Length).All(i => outs[i] == otherOuts[i]);
+    }
 }

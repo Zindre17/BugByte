@@ -4,32 +4,33 @@ internal record Branching(Token Token, List<IProgramPiece>? YesBranch, List<IPro
 {
     private static string EndLabel => $"eb_{Guid.NewGuid():N}";
 
-    public string[] Assemble()
+    public void Assemble(IAssemblyContext context)
     {
-        var assembly = new List<string>();
         var endLabel = EndLabel;
         var noLabel = $"nb_{Guid.NewGuid():N}";
         if (YesBranch is null)
         {
-            assembly.AddRange(Instructions.JumpIfNotZero(Token, endLabel).Assemble());
-            assembly.AddRange(NoBranch?.SelectMany(i => i.Assemble()) ?? throw new Exception($"Branching has no branches. {Token}"));
+            Instructions.JumpIfNotZero(Token, endLabel).Assemble(context);
+            if (NoBranch is null)
+            {
+                throw new Exception($"Branching has no branches. {Token}");
+            }
+            NoBranch.ForEach(i => i.Assemble(context));
         }
         else if (NoBranch is null)
         {
-            assembly.AddRange(Instructions.JumpIfZero(Token, endLabel).Assemble());
-            assembly.AddRange(YesBranch.SelectMany(i => i.Assemble()));
+            Instructions.JumpIfZero(Token, endLabel).Assemble(context);
+            YesBranch.ForEach(i => i.Assemble(context));
         }
         else
         {
-            assembly.AddRange(Instructions.JumpIfZero(Token, noLabel).Assemble());
-            assembly.AddRange(YesBranch.SelectMany(i => i.Assemble()));
-            assembly.AddRange(Instructions.Jump(Token, endLabel).Assemble());
-            assembly.Add($"{noLabel}:");
-            assembly.AddRange(NoBranch.SelectMany(i => i.Assemble()));
+            Instructions.JumpIfZero(Token, noLabel).Assemble(context);
+            YesBranch.ForEach(i => i.Assemble(context));
+            Instructions.Jump(Token, endLabel).Assemble(context);
+            context.AddExecution($"{noLabel}:");
+            NoBranch.ForEach(i => i.Assemble(context));
         }
-        assembly.Add($"{endLabel}:");
-
-        return [.. assembly];
+        context.AddExecution($"{endLabel}:");
     }
 
     public void TypeCheck(TypeStack currentStack, Dictionary<string, Stack<Primitives>> runtimePins)

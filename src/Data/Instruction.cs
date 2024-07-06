@@ -1,11 +1,18 @@
 
 namespace BugByte;
 
-internal record Instruction(Token Token, string[] Assembly, Action<TypeStack, Dictionary<string, Stack<Primitives>>> TypeChecker) : IProgramPiece
+internal record Instruction(Token Token, Action<IAssemblyContext> Assembler, Action<TypeStack, Dictionary<string, Stack<Primitives>>> TypeChecker) : IProgramPiece
 {
-    public Instruction(Token token, string[] assembly, Contract contract) : this(token, assembly, (stack, runtimePins) => contract.TypeCheck(token, stack)) { }
+    public Instruction(Token token, string[] assembly, Action<TypeStack, Dictionary<string, Stack<Primitives>>> typeChecker)
+        : this(token, context => context.AddExecution(assembly), typeChecker) { }
 
-    public string[] Assemble() => Assembly;
+    public Instruction(Token token, string[] assembly, Contract contract)
+        : this(token, context => context.AddExecution(assembly), (stack, runtimePins) => contract.TypeCheck(token, stack)) { }
+
+    public Instruction(Token token, Action<IAssemblyContext> assembler, Contract contract)
+        : this(token, assembler, (stack, runtimePins) => contract.TypeCheck(token, stack)) { }
+
+    public void Assemble(IAssemblyContext context) => Assembler(context);
     public void TypeCheck(TypeStack stack, Dictionary<string, Stack<Primitives>> runtimePins) => TypeChecker(stack, runtimePins);
 }
 
@@ -16,7 +23,7 @@ internal interface ITypeCheckable
 
 internal interface IAssemblable
 {
-    string[] Assemble();
+    void Assemble(IAssemblyContext context);
 }
 
 internal interface IProgramPiece : ITypeCheckable, IAssemblable
@@ -218,13 +225,13 @@ internal static class Instructions
         });
     }
 
-    internal static Instruction PinStackItem(PinnedStackItemType item)
+    internal static Instruction PinStackItem(IPinnedStackItem item)
     {
         var types = item.Typing.ToPrimitives();
         var assembly = Enumerable.Range(0, types.Length).SelectMany(i => new[]{
             ";-- pin stack element --",
             $"  pop rax",
-            $"  mov [r14 + {(item.Index*8)+(i*8)}], rax",
+            $"  mov [r14 + {(item.Offset*8)+(i*8)}], rax",
             // $"  add r15, 8",
         }).ToArray();
 
@@ -310,7 +317,11 @@ internal static class Instructions
         };
         var contract = isDynamic ? new Contract([Typing.Create(Primitives.Number)], [Typing.CreatePointer(allocation.Typing)])
             : Contract.Producer(Typing.CreatePointer(allocation.Typing));
-        return new(token, assembly, contract);
+        return new(token, context =>
+        {
+            context.AddExecution(assembly);
+            context.AddMemory(allocation);
+        }, contract);
     }
 
     internal static Instruction PushMemoryPointer(Token token, MemoryAllocationType allocation, int index, string fieldName, bool isDynamic)
@@ -331,15 +342,19 @@ internal static class Instructions
         };
         var contract = isDynamic ? new Contract([Typing.Create(Primitives.Number)], [Typing.CreatePointer(Typing.Create(field.Type))])
             : Contract.Producer(Typing.CreatePointer(Typing.Create(field.Type)));
-        return new(token, assembly, contract);
+        return new(token, context =>
+        {
+            context.AddExecution(assembly);
+            context.AddMemory(allocation);
+        }, contract);
     }
 
-    internal static Instruction PushFieldOfPinnedStackItem(PinnedStackItemType item, string fieldName)
+    internal static Instruction PushFieldOfPinnedStackItem(IPinnedStackItem item, string fieldName)
     {
         var field = item.Typing.GetField(fieldName);
         var assembly = new[]{
             ";-- push pinned stack item --",
-            $"  mov rax, [r14 + {(item.Index*8) + (item.Typing.GetSize() - 8 - field.Offset)}]",
+            $"  mov rax, [r14 + {(item.Offset*8) + (item.Typing.GetSize() - 8 - field.Offset)}]",
             $"  push rax"
         };
 
@@ -349,13 +364,13 @@ internal static class Instructions
         });
     }
 
-    internal static Instruction PushPinnedStackItem(PinnedStackItemType item)
+    internal static Instruction PushPinnedStackItem(IPinnedStackItem item)
     {
         var types = item.Typing.ToPrimitives();
         var assembly = Enumerable.Range(0, types.Length).Reverse().SelectMany(i =>
          new[]{
             ";-- push pinned stack item --",
-            $"  mov rax, [r14 + {(item.Index*8) + (i*8)}]",
+            $"  mov rax, [r14 + {(item.Offset*8) + (i*8)}]",
             $"  push rax",
         }).ToArray();
 
@@ -431,7 +446,11 @@ internal static class Instructions
     {
         var offsetInstruction = Literal.Number(token, offset);
         var addInstruction = Operations.Add(token);
-        return new(token, [.. offsetInstruction.Assemble(), .. addInstruction.Assemble()], (stack, runtimePins) =>
+        return new(token, context =>
+        {
+            offsetInstruction.Assemble(context);
+            addInstruction.Assemble(context);
+        }, (stack, runtimePins) =>
         {
             if (stack.Count is 0)
             {
@@ -517,7 +536,7 @@ internal static class Instructions
         });
     }
 
-    internal static Instruction UnpinStackItem(PinnedStackItemType item)
+    internal static Instruction UnpinStackItem(IPinnedStackItem item)
     {
         var assembly = new[]{
             ";-- unpin stack element --",
@@ -535,12 +554,12 @@ internal static class Instructions
         });
     }
 
-    internal static Instruction UpdatePinnedStackElement(PinnedStackItemType item)
+    internal static Instruction UpdatePinnedStackElement(IPinnedStackItem item)
     {
         var assembly = new[]{
             ";-- update pinned stack element --",
             $"  pop rax",
-            $"  mov [r14 + {item.Index * 8}], rax",
+            $"  mov [r14 + {item.Offset * 8}], rax",
         };
         return new(item.Token, assembly, (stack, runtimePins) =>
         {
@@ -577,27 +596,53 @@ internal static class Instructions
 
     public static class Literal
     {
-        public static Instruction String(Token token, StringLiteral str)
+        private static readonly Dictionary<string, int> stringLiterals = [];
+
+        public static Instruction String(Token token, string literalValue)
         {
-            var size = str.Value.Length - str.Value.Count(c => c is '\\');
+            var size = literalValue.Length - literalValue.Count(c => c is '\\');
+            var index = GetOrAddStringLiteral(stringLiterals, literalValue);
             var assembly = new[]{
                 $";-- String --",
                 $"  mov rax, {size}",
                 $"  push rax",
-                $"  mov rax, s{str.Index}",
+                $"  mov rax, s{index}",
                 $"  push rax",
             };
-            return new(token, assembly, Contract.Producer(Primitives.Number, Primitives.Pointer));
+            return new(token, context =>
+            {
+                context.AddString($"s{index}", literalValue);
+                context.AddExecution(assembly);
+            },
+             Contract.Producer(Primitives.Number, Primitives.Pointer));
         }
 
-        internal static Instruction NullTerminatedString(Token token, int index)
+        private static int GetOrAddStringLiteral(Dictionary<string, int> dict, string value)
         {
+            if (dict.TryGetValue(value, out var index))
+            {
+                return index;
+            }
+            index = dict.Count;
+            dict.Add(value, index);
+            return index;
+        }
+
+        private static readonly Dictionary<string, int> nullTerminatedStringLiterals = [];
+        internal static Instruction NullTerminatedString(Token token, string literalValue)
+        {
+            var index = GetOrAddStringLiteral(nullTerminatedStringLiterals, literalValue);
             var assembly = new[]{
                 $";-- Null terminated string --",
                 $"  mov rax, ns{index}",
                 $"  push rax",
             };
-            return new(token, assembly, Contract.Producer(Primitives.Pointer));
+            return new(token, context =>
+            {
+                context.AddString($"ns{index}", literalValue + "\0");
+                context.AddExecution(assembly);
+            },
+            Contract.Producer(Primitives.Pointer));
         }
 
         internal static Instruction Number(Token token, long number)

@@ -9,7 +9,11 @@ public static class LineExtensions
 {
     public static IWord FindNextWord(this ILineSegment line)
     {
-        if (IsLineComment(line.Value))
+        if (line is EmptyLineSegment)
+        {
+            return new Word(string.Empty);
+        }
+        else if (IsLineComment(line.Value))
         {
             return new LineComment();
         }
