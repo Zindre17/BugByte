@@ -57,34 +57,28 @@ static class ZeroTerminatedStringLiteralDefinition
 }
 
 
-public class Word : IWord
+public class Word(string value) : IWord
 {
-    public string Value { get; }
-
-    public Word(string value) => Value = value;
+    public string Value { get; } = value;
 
     public override string ToString() => Value;
 }
 
-public class SpecialCharacter : IWord
+public class SpecialCharacter(string value) : IWord
 {
-    public string Value { get; }
-
-    public SpecialCharacter(string value) => Value = value[0].ToString();
+    public string Value { get; } = value[0].ToString();
 
     public override string ToString() => Value;
 }
 
-public class StringLiteralWord : WrappedWord
+public class StringLiteralWord(string value)
+    : WrappedWord(StringLiteralDefinition.StartSymbol, StringLiteralDefinition.EndSymbol, value)
 {
-    public StringLiteralWord(string value)
-        : base(StringLiteralDefinition.StartSymbol, StringLiteralDefinition.EndSymbol, value) { }
 }
 
-public class ZeroTerminatedStringLiteralWord : WrappedWord
+public class ZeroTerminatedStringLiteralWord(string value)
+    : WrappedWord(ZeroTerminatedStringLiteralDefinition.StartSymbol, ZeroTerminatedStringLiteralDefinition.EndSymbol, value)
 {
-    public ZeroTerminatedStringLiteralWord(string value)
-        : base(ZeroTerminatedStringLiteralDefinition.StartSymbol, ZeroTerminatedStringLiteralDefinition.EndSymbol, value) { }
 }
 
 public abstract class WrappedWord : IWord
