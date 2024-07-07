@@ -29,9 +29,9 @@ internal static class Parser
             {
                 programPieces.Add(Instructions.Literal.String(token, stringLiteralWord.InnerValue));
             }
-            else if (token.Word is NullTerminatedStringLiteralWord nullTerminatedStringLiteralWord)
+            else if (token.Word is ZeroTerminatedStringLiteralWord zeroTerminatedStringLiteralWord)
             {
-                programPieces.Add(Instructions.Literal.NullTerminatedString(token, nullTerminatedStringLiteralWord.InnerValue));
+                programPieces.Add(Instructions.Literal.ZeroTerminatedString(token, zeroTerminatedStringLiteralWord.InnerValue));
             }
             else if (token.Word.Value is Tokens.Keyword.Yes)
             {
@@ -58,7 +58,7 @@ internal static class Parser
                 }
                 else if (constant.Type is ConstantTypes.ZeroTerminatedString)
                 {
-                    programPieces.Add(Instructions.Literal.NullTerminatedString(token, constant.Text!));
+                    programPieces.Add(Instructions.Literal.ZeroTerminatedString(token, constant.Text!));
                 }
                 else if (constant.Type is ConstantTypes.Number)
                 {

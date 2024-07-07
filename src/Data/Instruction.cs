@@ -628,10 +628,10 @@ internal static class Instructions
             return index;
         }
 
-        private static readonly Dictionary<string, int> nullTerminatedStringLiterals = [];
-        internal static Instruction NullTerminatedString(Token token, string literalValue)
+        private static readonly Dictionary<string, int> zeroTerminatedStringLiterals = [];
+        internal static Instruction ZeroTerminatedString(Token token, string literalValue)
         {
-            var index = GetOrAddStringLiteral(nullTerminatedStringLiterals, literalValue);
+            var index = GetOrAddStringLiteral(zeroTerminatedStringLiterals, literalValue);
             var assembly = new[]{
                 $";-- Null terminated string --",
                 $"  mov rax, ns{index}",

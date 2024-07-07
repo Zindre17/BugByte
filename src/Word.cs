@@ -21,9 +21,9 @@ public static class LineExtensions
         {
             return new StringLiteralWord(line.Value);
         }
-        else if (IsNullTerminatedStringLiteral(line.Value))
+        else if (IsZeroTerminatedStringLiteral(line.Value))
         {
-            return new NullTerminatedStringLiteralWord(line.Value);
+            return new ZeroTerminatedStringLiteralWord(line.Value);
         }
         else if (IsSpecialCharacter(line.Value))
         {
@@ -35,7 +35,7 @@ public static class LineExtensions
 
     private static bool IsLineComment(string line) => line.StartsWith(LineCommentSymbol);
     private static bool IsStringLiteral(string line) => line.StartsWith(StringLiteralDefinition.StartSymbol);
-    private static bool IsNullTerminatedStringLiteral(string line) => line.StartsWith(NullTerminatedStringLiteralDefinition.StartSymbol);
+    private static bool IsZeroTerminatedStringLiteral(string line) => line.StartsWith(ZeroTerminatedStringLiteralDefinition.StartSymbol);
     private static bool IsSpecialCharacter(string line) => SpecialSeparatorSymbols.Contains(line[0]);
 
     internal const string LineCommentSymbol = "#";
@@ -50,7 +50,7 @@ static class StringLiteralDefinition
     public static string EndSymbol => "\"";
 }
 
-static class NullTerminatedStringLiteralDefinition
+static class ZeroTerminatedStringLiteralDefinition
 {
     public static string StartSymbol => "0\"";
     public static string EndSymbol => "\"";
@@ -81,10 +81,10 @@ public class StringLiteralWord : WrappedWord
         : base(StringLiteralDefinition.StartSymbol, StringLiteralDefinition.EndSymbol, value) { }
 }
 
-public class NullTerminatedStringLiteralWord : WrappedWord
+public class ZeroTerminatedStringLiteralWord : WrappedWord
 {
-    public NullTerminatedStringLiteralWord(string value)
-        : base(NullTerminatedStringLiteralDefinition.StartSymbol, NullTerminatedStringLiteralDefinition.EndSymbol, value) { }
+    public ZeroTerminatedStringLiteralWord(string value)
+        : base(ZeroTerminatedStringLiteralDefinition.StartSymbol, ZeroTerminatedStringLiteralDefinition.EndSymbol, value) { }
 }
 
 public abstract class WrappedWord : IWord

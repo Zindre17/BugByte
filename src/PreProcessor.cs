@@ -234,7 +234,7 @@ internal record ConstantDefinition(Token Token, SourceCode Code) : IIdentifiedDe
         {
             return new(Token, ConstantTypes.String, Text: constString.Value);
         }
-        else if (constant.Word is NullTerminatedStringLiteralWord constZeroString)
+        else if (constant.Word is ZeroTerminatedStringLiteralWord constZeroString)
         {
             return new(Token, ConstantTypes.ZeroTerminatedString, Text: constZeroString.Value);
         }
