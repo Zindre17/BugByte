@@ -6,7 +6,6 @@ internal class Definitions(string scope, Definitions? parent = null)
     private readonly Dictionary<string, FunctionDefinition> functionDefinitions = [];
     private readonly Dictionary<string, StructDefinition> structDefinitions = [];
     private readonly Dictionary<string, ConstantDefinition> constantDefinitions = [];
-    private readonly Dictionary<string, NamedPin> pinnedStackItems = [];
     private readonly Dictionary<string, MemoryAllocationType> memoryAllocations = [];
 
     private readonly string scope = parent is not null ? $"{parent.scope}_{scope}" : scope;
@@ -56,33 +55,6 @@ internal class Definitions(string scope, Definitions? parent = null)
         }
     }
 
-    public NamedPin PinStackItem(Token token, TypingType typing)
-    {
-        if (!TryGetPin(token, out var namedPin) && namedPin is null)
-        {
-            namedPin = new NamedPin();
-            pinnedStackItems.Add(token.Word.Value, namedPin);
-        }
-
-        namedPin.Pin(token, typing);
-
-        return namedPin;
-    }
-
-    public bool TryGetPin(Token token, out NamedPin namedPin) => TryGetPin(token.Word.Value, out namedPin);
-    public bool TryGetPin(string name, out NamedPin namedPin)
-    {
-        if (pinnedStackItems.TryGetValue(name, out namedPin!))
-        {
-            return namedPin.HasAny();
-        }
-        if (parent is not null)
-        {
-            return parent.TryGetPin(name, out namedPin);
-        }
-        return false;
-    }
-
     public void AddMemory(Token nameToken, TypingType typing, int count)
     {
         var name = nameToken.Word.Value;
@@ -93,8 +65,6 @@ internal class Definitions(string scope, Definitions? parent = null)
         memoryAllocations.Add(name, MemoryAllocation.Create(nameToken, scope, typing, count));
     }
 
-    public bool TryGetConstant(Token name, out IIdentifiedDefinition<Constant> constant)
-        => TryGetConstant(name.Word.Value, out constant);
     public bool TryGetConstant(string name, out IIdentifiedDefinition<Constant> constant)
     {
         if (constantDefinitions.TryGetValue(name, out var definition) && definition is ConstantDefinition constantDefinition)
@@ -110,7 +80,6 @@ internal class Definitions(string scope, Definitions? parent = null)
         return false;
     }
 
-    public bool TryGetStructure(Token nameToken, out IIdentifiedDefinition<Structure> structure) => TryGetStructure(nameToken.Word.Value, out structure);
     public bool TryGetStructure(string name, out IIdentifiedDefinition<Structure> structure)
     {
         if (structDefinitions.TryGetValue(name, out var definition))
@@ -160,16 +129,16 @@ internal interface IIdentifiedDefinition<TDefinition> where TDefinition : class,
 {
     Token Token { get; }
 
-    TDefinition Parse(Definitions context);
+    TDefinition Parse(IScope context);
 }
 
 internal interface IDefinition;
 
 internal record StructDefinition(Token Token, SourceCode Code) : IIdentifiedDefinition<Structure>
 {
-    public Structure Parse(Definitions context) => ParseInternal(context);
+    public Structure Parse(IScope context) => ParseInternal(context);
 
-    private Structure ParseInternal(Definitions context)
+    private Structure ParseInternal(IScope context)
     {
         var fields = new Dictionary<string, StructureField>();
         var offset = 0;
@@ -211,8 +180,8 @@ internal record StructDefinition(Token Token, SourceCode Code) : IIdentifiedDefi
 }
 internal record ConstantDefinition(Token Token, SourceCode Code) : IIdentifiedDefinition<Constant>
 {
-    public Constant Parse(Definitions context) => ParseInternal(context);
-    private Constant ParseInternal(Definitions context)
+    public Constant Parse(IScope context) => ParseInternal(context);
+    private Constant ParseInternal(IScope context)
     {
         if (!Code.HasNextToken())
         {
@@ -241,9 +210,7 @@ internal record ConstantDefinition(Token Token, SourceCode Code) : IIdentifiedDe
 }
 internal record FunctionDefinition(Token Token, SourceCode Parameters, SourceCode Output, SourceCode Body) : IIdentifiedDefinition<Function>
 {
-    public SourceCode Code => Body;
-
-    public Function Parse(Definitions context)
+    public Function Parse(IScope context)
     {
         var functionInput = Parser.ParseParameters(context, Parameters);
         Parameters.Reset();
@@ -252,10 +219,10 @@ internal record FunctionDefinition(Token Token, SourceCode Parameters, SourceCod
 
         List<IProgramPiece> funcProgram = [];
         var pinnedInputItems = inputPins.Reverse<ParameterType>()
-            .Select(p => context.PinStackItem(p.GetNameToken(), p.Typing))
+            .Select(p => context.Pin(p.GetNameToken(), p.Typing))
             .ToList();
 
-        pinnedInputItems.ForEach(item => funcProgram.Add(Instructions.PinStackItem(item.Current)));
+        pinnedInputItems.ForEach(item => funcProgram.Add(Instructions.PinStackItem(item.GetPinInfo())));
         var (remainingInnerCode, innerDefinitions) = PreProcessor.Process(Body, Token.Word.Value, context);
         Body.Reset();
 
@@ -266,7 +233,7 @@ internal record FunctionDefinition(Token Token, SourceCode Parameters, SourceCod
         var contract = new Contract(functionInput.SelectMany(p => p.Typing.Decompose()).ToArray(), functionOutput.SelectMany(p => p.Typing.Decompose()).ToArray());
         var parsedFunc = new Function(Token, contract, inputPins.Count is not 0, funcProgram);
 
-        pinnedInputItems.Reverse<NamedPin>().ForEach(item => item.Unpin());
+        pinnedInputItems.Reverse<IScopedPin>().ForEach(item => item.Unpin());
         return parsedFunc;
     }
 }

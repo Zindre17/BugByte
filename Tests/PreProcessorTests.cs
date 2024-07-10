@@ -10,17 +10,17 @@ public class PreProcessorTests
     {
         var code = new SourceCode([]);
         var result = PreProcessor.Process(code, testScope);
-        Assert.AreEqual(0, result.Definitions.Count);
+        Assert.AreEqual(0, result.Scope.Definitions.Count);
         Assert.IsFalse(result.RemainingCode.HasNextToken());
     }
 
     [TestMethod]
     public void Process_StructDefinition_ReturnsStructDefinition()
     {
-        var (remainingCode, definition) = PreProcessor.Process(Lexer.LexString(structDefinitonString), testScope);
-        definition.TryGetStructure("point", out var structDefinition);
+        var (remainingCode, scope) = PreProcessor.Process(Lexer.LexString(structDefinitonString), testScope);
+        scope.TryGetStructure("point", out var structDefinition);
 
-        Assert.AreEqual(1, definition.Count);
+        Assert.AreEqual(1, scope.Definitions.Count);
         AssertStructure("point", 2, structDefinition);
         Assert.IsFalse(remainingCode.HasNextToken());
     }
@@ -28,11 +28,11 @@ public class PreProcessorTests
     [TestMethod]
     public void Process_ConstantDefinitions_ReturnsConstantDefinitions()
     {
-        var (remainingCode, definition) = PreProcessor.Process(Lexer.LexString(constantDefinitionString), testScope);
-        definition.TryGetConstant("four", out var fourConstant);
-        definition.TryGetConstant("prompt", out var promptConstant);
+        var (remainingCode, scope) = PreProcessor.Process(Lexer.LexString(constantDefinitionString), testScope);
+        scope.TryGetConstant("four", out var fourConstant);
+        scope.TryGetConstant("prompt", out var promptConstant);
 
-        Assert.AreEqual(2, definition.Count);
+        Assert.AreEqual(2, scope.Definitions.Count);
         AssertConstant("four", Typing.Create(Primitives.Number), fourConstant);
         AssertConstant("prompt", Typing.Create(Structure.String), promptConstant);
         Assert.IsFalse(remainingCode.HasNextToken());
@@ -41,10 +41,10 @@ public class PreProcessorTests
     [TestMethod]
     public void Process_FunctionDefinition_ReturnsFunctionDefinition()
     {
-        var (remainingCode, definition) = PreProcessor.Process(Lexer.LexString(functionDefinitionString), testScope);
-        definition.TryGetFunction("add", out var functionDefinition);
+        var (remainingCode, scope) = PreProcessor.Process(Lexer.LexString(functionDefinitionString), testScope);
+        scope.TryGetFunction("add", out var functionDefinition);
 
-        Assert.AreEqual(1, definition.Count);
+        Assert.AreEqual(1, scope.Definitions.Count);
         AssertFunction("add", new Contract([Primitives.Number, Primitives.Number], [Primitives.Number]), false, functionDefinition);
         Assert.IsFalse(remainingCode.HasNextToken());
     }
@@ -62,7 +62,7 @@ public class PreProcessorTests
 
     private static void AssertFunction(string expectedName, Contract expectedContract, bool expectedAutoUsing, IIdentifiedDefinition<Function> definition)
     {
-        var function = definition.Parse(new(testScope));
+        var function = definition.Parse(Scope.Create());
 
         Assert.AreEqual(expectedName, function.Token.Word.Value);
         Assert.AreEqual(expectedContract, function.Contract);
@@ -72,14 +72,14 @@ public class PreProcessorTests
     private static void AssertStructure(string expectedName, int expectedFieldCount, IIdentifiedDefinition<Structure> definition)
     {
         Assert.AreEqual(expectedName, definition.Token.Word.Value);
-        var structure = definition.Parse(new(testScope));
+        var structure = definition.Parse(Scope.Create());
         Assert.AreEqual(expectedFieldCount, structure.Fields.Count);
     }
 
     private static void AssertConstant(string expectedName, TypingType expectedType, IIdentifiedDefinition<Constant> definition)
     {
         Assert.AreEqual(expectedName, definition.Token.Word.Value);
-        var constant = definition.Parse(new(testScope));
+        var constant = definition.Parse(Scope.Create());
         Assert.AreEqual(Contract.Producer(expectedType), constant.Contract);
     }
 

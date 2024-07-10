@@ -1,17 +1,17 @@
 namespace BugByte;
 
-internal record PreProcesesingResult(SourceCode RemainingCode, Definitions Definitions);
+internal record PreProcesesingResult(SourceCode RemainingCode, IScope Scope);
 
 internal class PreProcessor
 {
-    public static PreProcesesingResult Process(SourceCode code, string newScope, Definitions parent = null!)
+    public static PreProcesesingResult Process(SourceCode code, string name, IScope? parent = null)
     {
-        var definitions = new Definitions(newScope, parent);
-        var (_, remainingCode) = FindDefinitions(definitions, code);
-        return new(remainingCode, definitions);
+        var scope = parent is null ? Scope.Create() : Scope.Create(parent, name);
+        var remainingCode = FindDefinitions(scope, code);
+        return new(remainingCode, scope);
     }
 
-    private static (Definitions, SourceCode) FindDefinitions(Definitions definitions, SourceCode code)
+    private static SourceCode FindDefinitions(IScope scope, SourceCode code)
     {
         var remainingCode = new SourceCodeBuilder();
         while (code.HasNextToken())
@@ -19,19 +19,19 @@ internal class PreProcessor
             var token = code.MoveNext();
             if (token.Word.Value is Tokens.Keyword.Struct)
             {
-                definitions.AddStructure(DefineStruct(code));
+                scope.Definitions.AddStructure(DefineStruct(code));
             }
             else if (token.Word.Value is Tokens.Keyword.ConstantDefinition)
             {
-                definitions.AddConstant(DefineConstant(code));
+                scope.Definitions.AddConstant(DefineConstant(code));
             }
             else if (IsFunction(code))
             {
-                definitions.AddFunction(DefineFunction(code));
+                scope.Definitions.AddFunction(DefineFunction(code));
             }
             else if (token.Word.Value is Tokens.Keyword.Include)
             {
-                definitions.Include(ProcessInclude(code));
+                scope.Definitions.Include(ProcessInclude(code));
             }
             //TODO handle global memory allocation
             else
@@ -39,7 +39,7 @@ internal class PreProcessor
                 remainingCode.Add(token);
             }
         }
-        return (definitions, remainingCode.Build());
+        return remainingCode.Build();
     }
 
     private static StructDefinition DefineStruct(SourceCode code)
@@ -87,9 +87,9 @@ internal class PreProcessor
         }
         Console.WriteLine($"Including {path}");
         var importCode = Lexer.LexFile(fullPath);
-        var definitions = new Definitions(Path.GetFileNameWithoutExtension(path));
-        var (importDefinitions, _) = FindDefinitions(definitions, importCode);
-        return importDefinitions;
+        var scope = Scope.Create();
+        _ = FindDefinitions(scope, importCode);
+        return scope.Definitions;
     }
 
     private static bool IsFunction(SourceCode code)
@@ -141,28 +141,4 @@ internal class PreProcessor
 
         return codeBlock;
     }
-}
-
-internal class NamedPin
-{
-    private readonly Stack<IPinnedStackItem> stackOfPins = [];
-
-    public void Pin(Token token, TypingType typing)
-    {
-        var pin = PinnedStackItem.Create(token, typing);
-        stackOfPins.Push(pin);
-    }
-
-    public void Unpin()
-    {
-        if (stackOfPins.Count is 0)
-        {
-            throw new Exception($"Cannot unpin because it is not pinned.");
-        }
-        var item = stackOfPins.Pop();
-        item.Unpin();
-    }
-
-    public IPinnedStackItem Current => stackOfPins.Peek();
-    public bool HasAny() => stackOfPins.Count > 0;
 }

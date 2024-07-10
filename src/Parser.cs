@@ -2,7 +2,7 @@ namespace BugByte;
 
 internal static class Parser
 {
-    public static List<IProgramPiece> ParseProgram(SourceCode code, Definitions definitions, string? terminationToken = null)
+    public static List<IProgramPiece> ParseProgram(SourceCode code, IScope scope, string? terminationToken = null)
     {
         if (!code.HasNextToken())
         {
@@ -41,17 +41,17 @@ internal static class Parser
             {
                 programPieces.Add(Instructions.Boolean.No(token));
             }
-            else if (definitions.TryGetFunction(token.Word.Value, out var func))
+            else if (scope.TryGetFunction(token.Word.Value, out var func))
             {
-                programPieces.AddRange(func.Parse(definitions).Body);
+                programPieces.AddRange(func.Parse(scope).Body);
             }
-            else if (definitions.TryGetPin(token, out var pinnedStackItems))
+            else if (scope.TryGetPin(token.Word.Value, out var pinnedStackItem))
             {
-                programPieces.Add(Instructions.PushPinnedStackItem(pinnedStackItems.Current));
+                programPieces.Add(Instructions.PushPinnedStackItem(pinnedStackItem.GetPinInfo()));
             }
-            else if (definitions.TryGetConstant(token, out var constantDefinition))
+            else if (scope.TryGetConstant(token.Word.Value, out var constantDefinition))
             {
-                var constant = constantDefinition.Parse(definitions);
+                var constant = constantDefinition.Parse(scope);
                 if (constant.Type is ConstantTypes.String)
                 {
                     programPieces.Add(Instructions.Literal.String(token, constant.Text!));
@@ -163,11 +163,11 @@ internal static class Parser
             }
             else if (token.Word.Value is Tokens.Keyword.Branch)
             {
-                programPieces.Add(ParseBranches(code, definitions));
+                programPieces.Add(ParseBranches(code, scope));
             }
             else if (token.Word.Value is Tokens.Keyword.Loop)
             {
-                programPieces.Add(ParseLoop(code, definitions));
+                programPieces.Add(ParseLoop(code, scope));
             }
             else if (token.Word.Value is Tokens.Keyword.Syscall0)
             {
@@ -199,20 +199,20 @@ internal static class Parser
             }
             else if (Tokens.Primitive.TryParsePrimitive(token.Word.Value, out var dataType))
             {
-                ParseTypedAllocation(code, definitions, token, Typing.Create(dataType));
+                ParseTypedAllocation(code, scope, token, Typing.Create(dataType));
             }
             else if (token.Word.Value == Structure.ZeroTerminatedString.Name)
             {
-                ParseTypedAllocation(code, definitions, token, Typing.Create(Structure.ZeroTerminatedString));
+                ParseTypedAllocation(code, scope, token, Typing.Create(Structure.ZeroTerminatedString));
             }
             else if (token.Word.Value == Structure.String.Name)
             {
-                ParseTypedAllocation(code, definitions, token, Typing.Create(Structure.String));
+                ParseTypedAllocation(code, scope, token, Typing.Create(Structure.String));
             }
-            else if (definitions.TryGetStructure(token, out var structureDefinition))
+            else if (scope.TryGetStructure(token.Word.Value, out var structureDefinition))
             {
-                var structure = structureDefinition.Parse(definitions);
-                ParseTypedAllocation(code, definitions, token, Typing.Create(structure));
+                var structure = structureDefinition.Parse(scope);
+                ParseTypedAllocation(code, scope, token, Typing.Create(structure));
             }
             else if (token.Word.Value is Tokens.Keyword.Allocate)
             {
@@ -252,7 +252,7 @@ internal static class Parser
                     throw new Exception($"Expected label for memory after {expectedBracket}, but got nothing.");
                 }
                 var label = code.MoveNext();
-                definitions.AddMemory(label, Typing.Create(Primitives.Number), size);
+                scope.Definitions.AddMemory(label, Typing.Create(Primitives.Number), size);
             }
             else if (token.Word.Value is Tokens.Keyword.Repeat)
             {
@@ -261,10 +261,10 @@ internal static class Parser
                     throw new Exception($"Expected iterator label or `:` after {token}, but got nothing.");
                 }
                 var next = code.MoveNext();
-                NamedPin iteration;
+                IScopedPin iteration;
                 if (next.Word.Value is not ":")
                 {
-                    iteration = definitions.PinStackItem(next, Typing.Create(Primitives.Number));
+                    iteration = scope.Pin(next, Typing.Create(Primitives.Number));
 
                     if (!code.HasNextToken())
                     {
@@ -274,13 +274,13 @@ internal static class Parser
                 }
                 else
                 {
-                    iteration = definitions.PinStackItem(Token.OnlyValue("i"), Typing.Create(Primitives.Number));
+                    iteration = scope.Pin(Token.OnlyValue("i"), Typing.Create(Primitives.Number));
                 }
                 // Iterator starts at 0
                 programPieces.Add(Instructions.Literal.Number(token, 0));
 
-                var repeatProgram = ParseProgram(code, definitions, Tokens.BlockEnd);
-                repeatProgram.Add(Instructions.PushPinnedStackItem(iteration.Current));
+                var repeatProgram = ParseProgram(code, scope, Tokens.BlockEnd);
+                repeatProgram.Add(Instructions.PushPinnedStackItem(iteration.GetPinInfo()));
                 repeatProgram.Add(Instructions.Literal.Number(token, 1));
                 repeatProgram.Add(Instructions.Operations.Add(token));
                 if (!code.HasNextToken())
@@ -298,7 +298,7 @@ internal static class Parser
                     Instructions.Operations.LessThan(token)
                 ];
 
-                programPieces.Add(new Loop(token, iteration.Current, conditionalProgram, repeatProgram));
+                programPieces.Add(new Loop(token, iteration, conditionalProgram, repeatProgram));
 
                 // Drop the last iterator value and the given count to repeat
                 programPieces.Add(Instructions.Drop(token));
@@ -316,7 +316,7 @@ internal static class Parser
             }
             else if (token.Word.Value is Tokens.Keyword.PinStackElements)
             {
-                var pins = new Stack<NamedPin>();
+                var pins = new Stack<IScopedPin>();
                 var toBePinned = new Stack<Token>();
                 while (code.HasNextToken())
                 {
@@ -329,11 +329,11 @@ internal static class Parser
                 }
                 while (toBePinned.Count > 0)
                 {
-                    var pinnedStackItem = definitions.PinStackItem(toBePinned.Pop(), Typing.Create(Primitives.Runtime));
-                    programPieces.Add(Instructions.PinStackItem(pinnedStackItem.Current));
+                    pinnedStackItem = scope.Pin(toBePinned.Pop(), Typing.Create(Primitives.Runtime));
+                    programPieces.Add(Instructions.PinStackItem(pinnedStackItem.GetPinInfo()));
                     pins.Push(pinnedStackItem);
                 }
-                var program = ParseProgram(code, definitions, ";");
+                var program = ParseProgram(code, scope, ";");
                 if (code.HasNextToken() && code.MoveNext().Word.Value is not ";")
                 {
                     throw new Exception($"Expected `;` after {token}, but got {code.CurrentToken()}");
@@ -344,7 +344,7 @@ internal static class Parser
                     pin.Unpin();
                 }
             }
-            else if (definitions.TryGetMemory(token.Word.Value, out var memoryAllocation))
+            else if (scope.TryGetMemory(token.Word.Value, out var memoryAllocation))
             {
                 if (code.HasRemainingTokens(3) && code.PeekNextToken().Word.Value is "[")
                 {
@@ -423,9 +423,9 @@ internal static class Parser
                 }
                 var name = parts[0];
                 var fieldName = parts[1];
-                if (definitions.TryGetStructure(name, out structureDefinition))
+                if (scope.TryGetStructure(name, out structureDefinition))
                 {
-                    var structure = structureDefinition.Parse(definitions);
+                    var structure = structureDefinition.Parse(scope);
                     if (!structure.Fields.TryGetValue(fieldName, out var field))
                     {
                         throw new Exception($"Unknown member {fieldName}.");
@@ -433,14 +433,14 @@ internal static class Parser
                     programPieces.Add(Instructions.StructFieldOffset(token, field.Offset));
                     continue;
                 }
-                else if (definitions.TryGetMemory(name, out var memory))
+                else if (scope.TryGetMemory(name, out var memory))
                 {
                     programPieces.Add(Instructions.PushMemoryPointer(token, memory, 0, fieldName, false));
                     continue;
                 }
-                else if (definitions.TryGetPin(name, out var pinnedItem))
+                else if (scope.TryGetPin(name, out var pinnedItem))
                 {
-                    programPieces.Add(Instructions.PushFieldOfPinnedStackItem(pinnedItem.Current, fieldName));
+                    programPieces.Add(Instructions.PushFieldOfPinnedStackItem(pinnedItem.GetPinInfo(), fieldName));
                     continue;
                 }
                 else
@@ -492,14 +492,19 @@ internal static class Parser
             }
             else
             {
-                throw new Exception($"Unknown token {token}");
+                Console.WriteLine("Parsed program so far");
+                foreach (var instruction in programPieces)
+                {
+                    Console.WriteLine($"\t{instruction.GetType()} : {instruction.Token}");
+                }
+                throw new Exception($"[{scope.GetScopeName()}] Unknown token {token}");
             }
         }
 
         return programPieces;
     }
 
-    private static void ParseTypedAllocation(SourceCode code, Definitions definitions, Token token, TypingType typing)
+    private static void ParseTypedAllocation(SourceCode code, IScope scope, Token token, TypingType typing)
     {
         if (!code.HasNextToken())
         {
@@ -526,10 +531,10 @@ internal static class Parser
             identifier = code.MoveNext();
         }
 
-        definitions.AddMemory(identifier, typing, count);
+        scope.Definitions.AddMemory(identifier, typing, count);
     }
 
-    private static Loop ParseLoop(SourceCode code, Definitions definitions)
+    private static Loop ParseLoop(SourceCode code, IScope scope)
     {
         var token = code.CurrentToken();
         if (!code.HasNextToken())
@@ -538,32 +543,31 @@ internal static class Parser
         }
         var iteratorLabel = code.MoveNext();
 
-        var iterator = definitions.PinStackItem(iteratorLabel, Typing.Create(Primitives.Runtime));
+        var iterator = scope.Pin(iteratorLabel, Typing.Create(Primitives.Runtime));
 
         if (!code.HasNextToken())
         {
             throw new Exception($"Expected condition after loop iterator, but got nothing @ {iteratorLabel}");
         }
-        var condition = ParseProgram(code, definitions, ":");
+        var condition = ParseProgram(code, scope, ":");
         var endToken = code.MoveNext();
         if (endToken.Word.Value is not ":")
         {
             throw new Exception($"Expected `:` after loop condition, but got {endToken}");
         }
-        var body = ParseProgram(code, definitions, Tokens.BlockEnd);
+        var body = ParseProgram(code, scope, Tokens.BlockEnd);
         var endBodyToken = code.MoveNext();
         if (endBodyToken.Word.Value is not Tokens.BlockEnd)
         {
             throw new Exception($"Expected `;` after loop body, but got {endBodyToken}");
         }
 
-        var iteratorTop = iterator.Current;
         iterator.Unpin();
-        return new(token, iteratorTop, condition, body);
+        return new(token, iterator, condition, body);
     }
 
 
-    private static Branching ParseBranches(SourceCode code, Definitions definitions)
+    private static Branching ParseBranches(SourceCode code, IScope scope)
     {
         List<IProgramPiece>? yesBranch = null;
         List<IProgramPiece>? noBranch = null;
@@ -586,7 +590,7 @@ internal static class Parser
         {
             throw new Exception($"Expected `:` after {firstBranch1Token}, but got {firstBranchBlockStartToken}");
         }
-        var branch1Program = ParseProgram(code, definitions, ";");
+        var branch1Program = ParseProgram(code, scope, ";");
         var branchEndToken = code.MoveNext();
         if (branchEndToken.Word.Value is not ";")
         {
@@ -612,7 +616,7 @@ internal static class Parser
         var firstBranch2Token = code.MoveNext();
         code.MoveNext(); // :
 
-        var branch2Program = ParseProgram(code, definitions, ";");
+        var branch2Program = ParseProgram(code, scope, ";");
         var endBranch2Token = code.MoveNext();
         if (endBranch2Token.Word.Value is not ";")
         {
@@ -631,7 +635,7 @@ internal static class Parser
         return new(token, yesBranch, noBranch);
     }
 
-    public static List<ParameterType> ParseParameters(Definitions definitions, SourceCode code)
+    public static List<ParameterType> ParseParameters(IScope scope, SourceCode code)
     {
         if (!code.HasNextToken())
         {
@@ -643,12 +647,12 @@ internal static class Parser
         while (code.HasNextToken())
         {
             var token = code.MoveNext();
-            if (!TryParseTyping(definitions, token, out var typing))
+            if (!TryParseTyping(scope, token, out var typing))
             {
                 throw new Exception($"Expected type, but got {token}.");
             }
 
-            if (!code.HasNextToken() || TryParseTyping(definitions, code.PeekNextToken(), out _))
+            if (!code.HasNextToken() || TryParseTyping(scope, code.PeekNextToken(), out _))
             {
                 parameters.Add(Parameter.Create(typing));
                 continue;
@@ -662,14 +666,14 @@ internal static class Parser
         return parameters;
     }
 
-    public static bool TryParseTyping(Definitions definitions, Token token, out TypingType typing)
+    public static bool TryParseTyping(IScope scope, Token token, out TypingType typing)
     {
         typing = token.Word.Value switch
         {
             _ when Tokens.Primitive.TryParsePrimitive(token.Word.Value, out var dataType) => Typing.Create(dataType),
             _ when token.Word.Value == Structure.ZeroTerminatedString.Name => Typing.Create(Structure.ZeroTerminatedString),
             _ when token.Word.Value == Structure.String.Name => Typing.Create(Structure.String),
-            _ when definitions.TryGetStructure(token, out var structure) => Typing.Create(structure.Parse(definitions)),
+            _ when scope.TryGetStructure(token.Word.Value, out var structure) => Typing.Create(structure.Parse(scope)),
             _ => null!,
         };
         return typing is not null;

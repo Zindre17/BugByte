@@ -28,8 +28,8 @@ Directory.SetCurrentDirectory(directory);
 
 var words = LexFile(fileName);
 
-var definitions = PreProcessor.Process(words, "main");
-var program = ParseProgram(definitions.RemainingCode, definitions.Definitions);
+var (remainingCode, scope) = PreProcessor.Process(words, "main");
+var program = ParseProgram(remainingCode, scope);
 
 var typeStack = new TypeStack();
 var runtimePins = new Dictionary<string, Stack<Primitives>>();

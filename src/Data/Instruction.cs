@@ -1,4 +1,3 @@
-
 namespace BugByte;
 
 internal record Instruction(Token Token, Action<IAssemblyContext> Assembler, Action<TypeStack, Dictionary<string, Stack<Primitives>>> TypeChecker) : IProgramPiece
