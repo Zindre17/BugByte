@@ -43,10 +43,10 @@ if (typeStack.Count > 0)
 }
 
 var assembler = new Assembler();
-assembler.Assemble(program);
+var assembly = assembler.Assemble(program);
 
 Directory.CreateDirectory("./output");
-File.WriteAllLines($"./output/{fileName.Split(".")[0]}.asm", assembler.Assembly);
+File.WriteAllLines($"./output/{fileName.Split(".")[0]}.asm", assembly);
 
 Console.WriteLine("Compiled successfully.");
 
