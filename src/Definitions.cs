@@ -196,7 +196,7 @@ internal record ConstantDefinition(Token Token, SourceCode Code) : IIdentifiedDe
         }
         else if (constant.Word is StringLiteralWord constString)
         {
-            return new(Token, ConstantTypes.String, Text: constString.Value);
+            return new(Token, ConstantTypes.String, Text: constString.InnerValue);
         }
         else if (constant.Word is ZeroTerminatedStringLiteralWord constZeroString)
         {
