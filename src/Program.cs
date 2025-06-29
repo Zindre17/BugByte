@@ -9,11 +9,6 @@ if (args.Length is 0)
     Console.WriteLine("Please provide a file name to lex");
     return;
 }
-if (args.Length > 1)
-{
-    Console.WriteLine("Please provide only one file name");
-    return;
-}
 
 var path = args[0];
 if (!Path.Exists(path))
@@ -28,10 +23,17 @@ Directory.SetCurrentDirectory(directory);
 
 var words = LexFile(fileName);
 
+var typeStack = new TypeStack();
+var firstToken = words.PeekNextToken();
+if (firstToken.Word.Value.StartsWith("take-args"))
+{
+    words.MoveNext();
+    typeStack.Push((Typing.Create(Primitives.Pointer), firstToken));
+    typeStack.Push((Typing.Create(Primitives.Number), firstToken));
+}
 var (remainingCode, scope) = PreProcessor.Process(words, "main");
 var program = ParseProgram(remainingCode, scope);
 
-var typeStack = new TypeStack();
 var runtimePins = new Dictionary<string, Stack<Primitives>>();
 foreach (var item in program)
 {
@@ -67,7 +69,7 @@ if (!RunExternalCommand("chmod", $"+x {fileNameWithoutExtension}"))
     Environment.Exit(1);
 }
 
-RunExternalCommand(fileNameWithoutExtension, "");
+RunExternalCommand(fileNameWithoutExtension, string.Join(' ', args[1..]));
 
 static bool RunExternalCommand(string command, string arguments, bool printInfo = true)
 {
