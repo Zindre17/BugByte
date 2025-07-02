@@ -6,7 +6,65 @@ using argv argc:
   argc 2 <?
     yes: "Please provide a filepath to compile\n" prints 1 exit;
 
-  1 argv nth-arg print-zero-str
+  1 argv nth-arg read-file
+;
+
+using file-size file-start:
+  ptr cursor
+  int remaining-size
+  file-start cursor store
+  file-size remaining-size store
+
+  remaining-size load
+  while current 0 >:
+    remaining-text next-word
+    using wlength wstart:
+      wlength 0 =?
+        yes: bump-cursor;
+        no:
+          wlength wstart println
+          wlength move-cursor
+        ;
+      remaining-size load
+    ;
+  ;drop
+
+  remaining-text()int ptr:
+    remaining-size load
+    cursor load
+  ;
+
+  bump-cursor(): 1 move-cursor;
+
+  move-cursor(int distance):
+    cursor load distance + cursor store
+    remaining-size load distance - remaining-size store
+  ;
+;
+
+println(str): prints "\n" prints;
+
+aka separators "\n :;?[]()"
+next-word(str text)int ptr:
+  0 while i text.length <:
+    separators text.start i + is-any-of?
+      yes: i text.length +;
+      no: i 1 +;
+  ;
+  text.length -
+  text.start
+;
+
+is-any-of(str chars ptr text):
+  text load-byte
+  using char:
+    no
+    0 while i chars.length <:
+      char chars.start i + load-byte =?
+        yes: drop yes i chars.length +;
+        no: i 1 +;
+    ; drop
+  ;
 ;
 
 nth-arg(int n ptr argstart)0str:
