@@ -17,6 +17,15 @@ using file-size file-start:
 
   remaining-size load
   while current 0 >:
+    cursor load is-string-literal?
+      yes:
+        "found a string literal: " prints
+        bump-cursor
+        remaining-text complete-string-literal
+        dup
+        1 + cursor load 1 - prints
+        move-cursor
+      ;
     remaining-text next-word
     using wlength wstart:
       wlength 0 =?
@@ -42,6 +51,18 @@ using file-size file-start:
   ;
 ;
 
+complete-string-literal(str text)int:
+  int double-quote
+  ascii-double-quote double-quote store
+  text double-quote index-of
+;
+
+aka ascii-double-quote 34
+is-string-literal(ptr)bool:
+  load-byte ascii-double-quote =
+;
+
+next-line(str)int: 0"\n" index-of;
 println(str): prints "\n" prints;
 
 aka separators "\n :;?[]()"
@@ -53,6 +74,15 @@ next-word(str text)int ptr:
   ;
   text.length -
   text.start
+;
+
+index-of(str text 0str char)int:
+  0 1 -
+  0 while i text.length <:
+    text.start i + load-byte char load-byte =?
+      yes: drop i text.length i +;
+      no: i 1 +;
+  ;drop
 ;
 
 is-any-of(str chars ptr text):
