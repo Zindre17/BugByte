@@ -20,12 +20,27 @@ using file-size file-start:
     cursor load is-string-literal?
       yes:
         "found a string literal: " prints
+        cursor load # checkpoint
         bump-cursor
         remaining-text complete-string-literal
-        dup
-        1 + cursor load 1 - prints
+        dup 0 1 - =?yes: "no closing double quote found" println 1 exit;
         move-cursor
+        bump-cursor
+        dup cursor load swap - swap println
       ;
+    no:
+    cursor load is-zero-string-literal?
+      yes:
+        "found a zero-string literal: " prints
+        cursor load # checkpoint
+        2 move-cursor
+        remaining-text complete-string-literal
+        dup 0 1 - =?yes: "No closing double quote found (0str)" println 1 exit;
+        move-cursor
+        bump-cursor
+        dup cursor load swap - swap println
+      ;
+    no:
     remaining-text next-word
     using wlength wstart:
       wlength 0 =?
@@ -34,8 +49,9 @@ using file-size file-start:
           wlength wstart println
           wlength move-cursor
         ;
-      remaining-size load
     ;
+    ;;
+    remaining-size load
   ;drop
 
   remaining-text()int ptr:
@@ -60,6 +76,13 @@ complete-string-literal(str text)int:
 aka ascii-double-quote 34
 is-string-literal(ptr)bool:
   load-byte ascii-double-quote =
+;
+
+is-zero-string-literal(ptr)bool:
+  dup
+  load-byte 0"0" load-byte =
+  swap 1 + is-string-literal
+  &
 ;
 
 next-line(str)int: 0"\n" index-of;
