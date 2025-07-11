@@ -31,7 +31,20 @@ internal class PreProcessor
             }
             else if (token.Word.Value is Tokens.Keyword.Include)
             {
-                scope.Definitions.Include(ProcessInclude(code));
+                var includePath = code.MoveNext();
+                if (includePath.Word is not StringLiteralWord stringLiteralWord)
+                {
+                    throw new Exception($"Expected path after include, but got {includePath}");
+                }
+                var path = stringLiteralWord.InnerValue;
+                var fullPath = Path.GetFullPath(path);
+                if (!File.Exists(fullPath))
+                {
+                    throw new Exception($"Cannot include {path}({includePath}) because it does not exist.");
+                }
+                Console.WriteLine($"Including {path}");
+                var includedScope = ProcessInclude(fullPath);
+                scope.Definitions.Include(includedScope.Definitions);
             }
             //TODO handle global memory allocation
             else
@@ -72,24 +85,12 @@ internal class PreProcessor
         return new FunctionDefinition(functionName, functionParameters, functionOutput, functionCode);
     }
 
-    private static Definitions ProcessInclude(SourceCode code)
+    private static IScope ProcessInclude(string fullPath)
     {
-        var includePath = code.MoveNext();
-        if (includePath.Word is not StringLiteralWord stringLiteralWord)
-        {
-            throw new Exception($"Expected path after include, but got {includePath}");
-        }
-        var path = stringLiteralWord.InnerValue;
-        var fullPath = Path.GetFullPath(path);
-        if (!File.Exists(fullPath))
-        {
-            throw new Exception($"Cannot include {path}({includePath}) because it does not exist.");
-        }
-        Console.WriteLine($"Including {path}");
         var importCode = Lexer.LexFile(fullPath);
         var scope = Scope.Create();
         _ = FindDefinitions(scope, importCode);
-        return scope.Definitions;
+        return scope;
     }
 
     private static bool IsFunction(SourceCode code)

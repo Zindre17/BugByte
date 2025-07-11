@@ -31,6 +31,13 @@ internal record Token(string Filename, IWord Word, int Line, int Column)
 {
     public static Token OnlyValue(string value) => new("", LineSegment.From(value).FindNextWord(), 0, 0);
 
+    public bool HasSameOrigin(Token other) =>
+        Filename == other.Filename
+        && Line == other.Line
+        && Column == other.Column;
+
+    public bool HasDifferentOrigin(Token other) => !HasSameOrigin(other);
+
     public override string ToString() => $"`{Word}` @ {Filename}:{Line}:{Column}";
 };
 

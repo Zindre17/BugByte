@@ -16,9 +16,15 @@ internal class Definitions(string scope, Definitions? parent = null)
     {
         if (functionDefinitions.TryGetValue(functionDefinition.Token.Word.Value, out FunctionDefinition? value))
         {
-            throw new AlreadyDefinedException(value.Token, functionDefinition.Token);
+            if(functionDefinition.Token.HasDifferentOrigin(value.Token))
+            {
+                throw new AlreadyDefinedException(value.Token, functionDefinition.Token);
+            }
         }
-        functionDefinitions.Add(functionDefinition.Token.Word.Value, functionDefinition);
+        else
+        {
+            functionDefinitions.Add(functionDefinition.Token.Word.Value, functionDefinition);
+        }
     }
 
     public void AddConstant(ConstantDefinition constant)
