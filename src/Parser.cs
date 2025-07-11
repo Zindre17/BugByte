@@ -43,7 +43,7 @@ internal static class Parser
             }
             else if (scope.TryGetFunction(token.Word.Value, out var func))
             {
-                programPieces.AddRange(func.Parse(scope).Body);
+                programPieces.AddRange(func.Parse(Scope.Create(scope, func.Token.Word.Value)).Body);
             }
             else if (scope.TryGetPin(token.Word.Value, out var pinnedStackItem))
             {
