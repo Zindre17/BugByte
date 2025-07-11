@@ -432,10 +432,10 @@ internal static class Instructions
             }
             foreach (var type in typing.Decompose().Reverse())
             {
-                var (next, _) = stack.Pop();
+                var (next, nextToken) = stack.Pop();
                 if (next != type && !(next.IsPointer() && type.IsPointer()))
                 {
-                    throw new Exception($"Type mismatch: {next} != {type} ({token})");
+                    throw new Exception($"Type mismatch: {next} ({nextToken}) != {type} ({token})");
                 }
             }
         });

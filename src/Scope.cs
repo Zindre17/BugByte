@@ -47,7 +47,7 @@ internal static class Scope
     {
         if (scope.Pins.ContainsKey(token.Word.Value))
         {
-            throw new Exception($"Already exists a pin with the same name in the current sopce {scope.GetScopeName()}");
+            throw new Exception($"Already exists a pin with the same name({token.Word.Value}) in the current scope {scope.GetScopeName()}");
         }
         var pin = new ScopedPinData(scope, PinnedStackItem.Create(token, type));
         scope.Pins.Add(token.Word.Value, pin);
