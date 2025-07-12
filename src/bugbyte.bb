@@ -1,136 +1,37 @@
 take-args
 
 include "../lib/file.bb"
+include "../lib/str.bb"
+include "lexer.bb"
+
+str current-file
+get-current-file()str: current-file load;
+set-current-file(str): current-file store;
 
 using argv argc:
   argc 2 <?
     yes: "Please provide a filepath to compile\n" prints 1 exit;
 
-  1 argv nth-arg read-file
+  1 argv nth-arg
 ;
 
-using file-size file-start:
-  ptr cursor
-  int remaining-size
-  file-start cursor store
-  file-size remaining-size store
+dup 0str-to-str set-current-file
+get-current-file println
 
-  remaining-size load
-  while current 0 >:
-    cursor load is-string-literal?
-      yes:
-        "found a string literal: " prints
-        cursor load dup # checkpoint
-        bump-cursor
-        remaining-text complete-string-literal
-        dup 0 1 - =?yes: "no closing double quote found" println 1 exit;
-        move-cursor
-        bump-cursor
-        cursor load swap - swap println
-      ;
-    no:
-    cursor load is-zero-string-literal?
-      yes:
-        "found a zero-string literal: " prints
-        cursor load dup # checkpoint
-        2 move-cursor
-        remaining-text complete-string-literal
-        dup 0 1 - =?yes: "No closing double quote found (0str)" println 1 exit;
-        move-cursor
-        bump-cursor
-        cursor load swap - swap println
-      ;
-    no:
-    cursor load is-line-comment?
-      yes:
-        "found a line-comment: " prints
-        cursor load dup
-        remaining-text next-line
-        dup 0 1 - =?yes: drop remaining-size load;
-        1 + move-cursor
-        cursor load swap - swap println
-      ;
-    no:
-    remaining-text next-word
-    using wlength wstart:
-      wlength 0 =?
-        yes: bump-cursor;
-        no:
-          wlength wstart println
-          wlength move-cursor
-        ;
-    ;
-    ;;;
-    remaining-size load
-  ;drop
+read-file
+using size start:
+  get-current-file size start tokenize
+  over over
+  "Tokens found: " prints print "." println "Starting at: " prints print "." println
+;
 
-  remaining-text()int ptr:
-    remaining-size load
-    cursor load
-  ;
-
-  bump-cursor(): 1 move-cursor;
-
-  move-cursor(int distance):
-    cursor load distance + cursor store
-    remaining-size load distance - remaining-size store
+using start count:
+  count repeat i:
+    i size-of-token * start + load-token print-token
   ;
 ;
 
-complete-string-literal(str text)int:
-  int double-quote
-  ascii-double-quote double-quote store
-  text double-quote index-of
-;
-
-aka ascii-double-quote 34
-is-string-literal(ptr)bool:
-  load-byte ascii-double-quote =
-;
-
-is-zero-string-literal(ptr)bool:
-  dup
-  load-byte 0"0" load-byte =
-  swap 1 + is-string-literal
-  &
-;
-
-is-line-comment(ptr)bool: load-byte 0"#" load-byte =;
-
-next-line(str)int: 0"\n" index-of;
 println(str): prints "\n" prints;
-
-aka separators "\n :;?[]()"
-next-word(str text)int ptr:
-  0 while i text.length <:
-    separators text.start i + is-any-of?
-      yes: i text.length +;
-      no: i 1 +;
-  ;
-  text.length -
-  text.start
-;
-
-index-of(str text 0str char)int:
-  0 1 -
-  0 while i text.length <:
-    text.start i + load-byte char load-byte =?
-      yes: drop i text.length i +;
-      no: i 1 +;
-  ;drop
-;
-
-is-any-of(str chars ptr text):
-  text load-byte
-  using char:
-    no
-    0 while i chars.length <:
-      char chars.start i + load-byte =?
-        yes: drop yes i chars.length +;
-        no: i 1 +;
-    ; drop
-  ;
-;
 
 nth-arg(int n ptr argstart)0str:
   ptr current-arg
@@ -153,11 +54,3 @@ nth-arg(int n ptr argstart)0str:
   ;
 ;
 
-print-zero-str(0str zstr):
-  0 while i zstr + as ptr load-byte 0 !=:
-    zstr i + as ptr load-byte printc
-    i 1 +
-  ;
-  drop
-  0"\n" load-byte printc
-;

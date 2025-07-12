@@ -55,4 +55,23 @@ trim-start(int size ptr location) str:
 ;
 
 is-space(ptr) int: load-byte 0" " load-byte = ;
+is-space-char(int) int: 0" " load-byte = ;
+
+is-newline(ptr)int: load-byte 0"\n" load-byte =;
+find-next-newline(str)int: 0"\n" index-of;
+
+index-of(str text 0str char)int:
+  0 1 -
+  char load-byte
+  0 while i text.length <:
+    dup text.start i + load-byte =?
+      yes: swap drop i swap text.length i +;
+      no: i 1 +;
+  ;drop drop
+;
+
+0str-to-str(0str start)str:
+  0 while i start + load-byte 0 !=:i 1 +;
+  start
+;
 
