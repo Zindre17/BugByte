@@ -20,35 +20,35 @@ dup find-stack-number-line
 using line-count stack-number-line:
     init-stacks
     "\n" prints
-    
+
     stack-number-line 1 + while line-nr line-count < :
         # lines line-nr get-line prints "\n" prints
         line-nr get-line drop 0 = ?
-        no: 
+        no:
             line-nr parse-command execute-command
         ;
         line-nr bump
     ; drop
-    
+
     show-tops
     "\n" prints
-    
+
     # part 2
     init-stacks
     "\n" prints
-    
+
     stack-number-line 1 + while line-nr line-count < :
         # lines line-nr get-line prints "\n" prints
         line-nr get-line drop 0 = ?
-        no: 
+        no:
             line-nr parse-command execute-command-bulk
         ;
         line-nr bump
     ; drop
-    
+
     show-tops
     "\n" prints
-    
+
     init-stacks():
         stack-number-line 1 - while line-nr 0 >= :
             0 while stack-nr get-stack-count < :
@@ -58,11 +58,11 @@ using line-count stack-number-line:
                 no:
                     dup stack-nr push-crate
                 ;
-                drop 
+                drop
                 drop
                 stack-nr bump
             ; drop
-            
+
             line-nr 1 -
         ; drop
     ;
@@ -94,28 +94,28 @@ execute-command-bulk(int count int source int target):
         target target get-stack-size count + 1 - i - get-stack-index
         store
         i bump
-    ; drop 
-    
+    ; drop
+
     target get-stack-size count + target set-stack-size
 ;
 
 execute-command(int count int source int target):
     0 while i count <:
-        source pop-crate 
+        source pop-crate
         target push-crate
         i bump
     ; drop
 ;
 
-parse-command(int)int int int: 
+parse-command(int)int int int:
     get-line words drop
-     
+
     using words-array:
         1 word-at-index parse-number
         3 word-at-index parse-number 1 -
         5 word-at-index parse-number 1 -
     ;
-    
+
     size-index(int) ptr: 16 * words-array + ;
     start-index(int) ptr: 16 * 8 + words-array + ;
     word-at-index(int) str: dup size-index load swap start-index load as ptr;
@@ -124,7 +124,7 @@ parse-command(int)int int int:
 show-tops():
     "\n" prints
     0 while stack-nr get-stack-count < :
-        stack-nr 
+        stack-nr
         stack-nr get-stack-size 1 -
         get-stack-item printc
         stack-nr bump
@@ -145,7 +145,7 @@ push-crate(int crate int stack-nr):
     stack-nr get-stack-size
     using stack-size:
         crate stack-nr stack-size get-stack-index store
-        stack-size bump stack-nr set-stack-size 
+        stack-size bump stack-nr set-stack-size
     ;
 ;
 

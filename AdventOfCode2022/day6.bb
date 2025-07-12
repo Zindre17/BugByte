@@ -14,41 +14,41 @@ int[14] longWindow
 # drop drop
 using streamSize streamStart:
     # init window
-    shortSize repeat i : 
+    shortSize repeat i :
         readNext i window[] store
     ;
 
-    window while it shortSize hasDuplicates: 
+    window while it shortSize hasDuplicates:
         shiftWindowLeft
         readNext
         append
         bumpCursor
-        
+
         it
     ;
-    drop 
-    
-    cursor load print
-    
+    drop
+
+    cursor load print "\n" prints
+
     # Part 2
     0 cursor store
-    
+
     longSize repeat i :
         readNext i longWindow[] store
     ;
-    
-    longWindow while it longSize hasDuplicates: 
+
+    longWindow while it longSize hasDuplicates:
         shiftLongWindowLeft
         readNext
         appendLong
         bumpCursor
-        
+
         it
     ;
     drop
-    
-    cursor load print
-    
+
+    cursor load print "\n" prints
+
     readNext() int: cursor load streamStart + load-byte ;
 ;
 
@@ -62,7 +62,7 @@ shiftWindowLeft(): window shortSize shiftLeft ;
 
 shiftLongWindowLeft(): longWindow longSize shiftLeft ;
 
-shiftLeft(ptr buffer int size): 
+shiftLeft(ptr buffer int size):
     1 while index size < :
         buffer index shiftItemLeft
         index 1 +
@@ -71,38 +71,38 @@ shiftLeft(ptr buffer int size):
 ;
 
 shiftItemLeft(ptr int):
-    8 * + 
+    8 * +
     dup
     load
     swap 8 - store
 ;
 
-hasDuplicates(ptr int) bool: 
+hasDuplicates(ptr int) bool:
     int sum
     0 sum store
-    
+
     1 -
     using windowStart lastIndex:
-        0 while i lastIndex <: 
+        0 while i lastIndex <:
             i 1 + while j lastIndex <=:
                 i j compare
                 sum load + sum store
-                
+
                 j 1 +
             ;
             drop
-            
+
             i 1 +
         ;
         drop
-        
+
         compare(int int) bool:
             8 * windowStart + load-byte
-            swap 
+            swap
             8 * windowStart + load-byte
             =
         ;
     ;
-    
-    sum load 0 > 
+
+    sum load 0 >
 ;

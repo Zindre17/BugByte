@@ -17,7 +17,7 @@ using line-count:
         split-in-halfs
 
         get-items-bitwise
-        
+
         using first-half :
             get-items-bitwise
             first-half
@@ -27,23 +27,23 @@ using line-count:
         ;
         linenr 1 +
     ; drop
-    
+
     0 while linenr line-count < :
         linenr 0 + get-line get-items-bitwise
         linenr 1 + get-line get-items-bitwise
         &
         linenr 2 + get-line get-items-bitwise
         &
-        
+
         get-priority-sum 
         add-to-sum2
-        
+
         linenr 3 +
     ; drop
 ;
 
-"part1: " prints sum load print
-"part2: " prints sum2 load print
+"part1: " prints sum load print "\n" prints
+"part2: " prints sum2 load print "\n" prints
 
 add-to-sum(int): sum load + sum store ;
 add-to-sum2(int): sum2 load + sum2 store ;
@@ -52,26 +52,26 @@ add-to-sum2(int): sum2 load + sum2 store ;
 get-items-bitwise(int size ptr pointer) int:
     int items
     0 items store
-    
+
     0 while i size <:
         i pointer + load-byte
-        dup is-upper-case ? yes: 
+        dup is-upper-case ? yes:
             # Uppercase priority A - Z (27 - 52)
             64 - 26 +
         ;
         no:
             # Lowercase priority a - z (1 - 26)
-            96 - 
+            96 -
         ;
-        
-        1 swap << 
-        items load 
+
+        1 swap <<
+        items load
         |
         items store
-        
+
         i 1 +
     ; drop
-    
+
     items load
 ;
 
@@ -79,18 +79,18 @@ is-upper-case(int) bool: 97 < ;
 
 # number -> number
 get-priority-sum(int items) int:
-    int score   
+    int score
     0 score store
-    
+
     0 while i 64 < :
-        1 i << 
+        1 i <<
         items &
         0 > ? yes: i add-to-score;
         i 1 +
     ; drop
-    
+
     score load
-    
+
     add-to-score(int): score load + score store ;
 ;
 
@@ -98,7 +98,7 @@ get-line(int) str: lines[] load ;
 
 split-in-halfs(int size ptr location) str str:
     size 2 /
-    dup 
-    dup location + swap 
-    location 
+    dup
+    dup location + swap
+    location
 ;

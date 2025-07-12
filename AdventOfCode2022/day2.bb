@@ -23,12 +23,12 @@ using line-count:
         over over "C X" == ? yes: 7 add-to-sum 2 add-to-sum2;
         over over "C Y" == ? yes: 2 add-to-sum 6 add-to-sum2;
                   "C Z" == ? yes: 6 add-to-sum 7 add-to-sum2;
-        
-        linenr 1 + 
+
+        linenr 1 +
     ; drop
-    
-    "part1: " prints sum load print
-    "part2: " prints sum2 load print
+
+    "part1: " prints sum load print "\n" prints
+    "part2: " prints sum2 load print "\n" prints
 ;
 
 get-line(int) str: lines[] load ;

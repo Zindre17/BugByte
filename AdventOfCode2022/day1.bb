@@ -23,30 +23,30 @@ using line-count :
         yes:
             current load
             dup max load > ? yes: set-new-max ;
-            no: 
+            no:
                 dup two load > ? yes: set-new-number-two ;
                 no:
                     dup three load >? yes: set-new-number-three ;
                     no: drop ;
                 ;
             ;
-            
+
             0 current store
         ;
         no:
             linenr get-line
             parse-number
-            add-to-current 
+            add-to-current
         ;
-        
+
         linenr 1 +
     ; drop
-    
-    "max (part 1): " prints max load print
-    "top 3 (part 2): " prints max load two load + three load + print
+
+    "max (part 1): " prints max load print "\n" prints
+    "top 3 (part 2): " prints max load two load + three load + print "\n" prints
 ;
 
-set-new-max(int): 
+set-new-max(int):
     max load set-new-number-two
     max store
 ;
