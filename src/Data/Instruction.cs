@@ -214,7 +214,7 @@ internal static class Instructions
         {
             if (stack.Count < 2)
             {
-                throw new Exception($"Stack needs to contain at least two elements, but got {stack.Count}.");
+                throw new Exception($"{token} Stack needs to contain at least two elements, but got {stack.Count}.");
             }
             var (a, at) = stack.Pop();
             var (b, bt) = stack.Pop();
@@ -455,10 +455,10 @@ internal static class Instructions
             {
                 throw new Exception("Expected at least one item on the stack, but it was empty.");
             }
-            var (top, _) = stack.Peek();
+            var (top, topToken) = stack.Peek();
             if (!top.IsPointer())
             {
-                throw new Exception($"Expected pointer on the stack, but got {top}.");
+                throw new Exception($"Expected pointer on the stack, but got {top}({topToken}).");
             }
             offsetInstruction.TypeCheck(stack, runtimePins);
             addInstruction.TypeCheck(stack, runtimePins);

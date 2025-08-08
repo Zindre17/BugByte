@@ -79,7 +79,7 @@ internal record Branching(Token Token, List<IProgramPiece>? YesBranch, List<IPro
             var (diff, msg) = currentStack.Diff(otherCurrentStack);
             if (diff is not TypeStackDiff.Equal)
             {
-                throw new Exception($"Branches must produce the same stack. Size {currentStack.Count} vs {otherCurrentStack.Count}. Diff: {msg}");
+                throw new Exception($"Branches from {Token} must produce the same stack. Size {currentStack.Count}(yes) vs {otherCurrentStack.Count}(no). Diff: {msg}");
             }
         }
     }
