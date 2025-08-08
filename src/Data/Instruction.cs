@@ -880,6 +880,7 @@ internal static class Instructions
 
         internal static Instruction StringEqual(Token token)
         {
+            var uniqueLabelSuffix = Guid.NewGuid();
             var assembly = new[]{
                 ";-- string equal --",
                 $"  pop rcx",
@@ -887,27 +888,27 @@ internal static class Instructions
                 $"  pop rdx",
                 $"  pop r9",
                 $"  cmp r8, r9",
-                $"  jne .string_not_equal",
+                $"  jne .string_not_equal_{uniqueLabelSuffix:N}",
                 $"  cmp r8, 0",
-                $"  je .string_equal",
-                $".string_check_loop:",
+                $"  je .string_equal_{uniqueLabelSuffix:N}",
+                $".string_check_loop_{uniqueLabelSuffix:N}:",
                 $"  mov al, [rcx]",
                 $"  cmp al, [rdx]",
-                $"  jne .string_not_equal",
+                $"  jne .string_not_equal_{uniqueLabelSuffix:N}",
                 $"  dec r8",
                 $"  cmp r8, 0",
-                $"  je .string_equal",
+                $"  je .string_equal_{uniqueLabelSuffix:N}",
                 $"  inc rcx",
                 $"  inc rdx",
-                $"  jmp .string_check_loop",
-                $".string_equal:",
+                $"  jmp .string_check_loop_{uniqueLabelSuffix:N}",
+                $".string_equal_{uniqueLabelSuffix:N}:",
                 $"  mov rax, 1",
                 $"  push rax",
-                $"  jmp .string_equal_end",
-                $".string_not_equal:",
+                $"  jmp .string_equal_end_{uniqueLabelSuffix:N}",
+                $".string_not_equal_{uniqueLabelSuffix:N}:",
                 $"  mov rax, 0",
                 $"  push rax",
-                $".string_equal_end:",
+                $".string_equal_end_{uniqueLabelSuffix:N}:",
             };
             return new(token, assembly, Contract.Consumer(Primitives.Number, Primitives.Pointer, Primitives.Number, Primitives.Pointer) with { Out = [Typing.Create(Primitives.Number)] });
         }
