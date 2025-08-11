@@ -433,14 +433,14 @@ internal static class Parser
                     programPieces.Add(Instructions.StructFieldOffset(token, field.Offset));
                     continue;
                 }
-                else if (scope.TryGetMemory(name, out var memory))
-                {
-                    programPieces.Add(Instructions.PushMemoryPointer(token, memory, 0, fieldName, false));
-                    continue;
-                }
                 else if (scope.TryGetPin(name, out var pinnedItem))
                 {
                     programPieces.Add(Instructions.PushFieldOfPinnedStackItem(pinnedItem.GetPinInfo(), fieldName));
+                    continue;
+                }
+                else if (scope.TryGetMemory(name, out var memory))
+                {
+                    programPieces.Add(Instructions.PushMemoryPointer(token, memory, 0, fieldName, false));
                     continue;
                 }
                 else
